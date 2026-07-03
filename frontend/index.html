@@ -1392,6 +1392,32 @@
         [data-theme="light"] .per-page-selector:hover { border-color: var(--color-primary); }
         .export-actions { display: flex; gap: 4px; }
 
+        /* Export Modal Enhancements */
+        #exportModal .export-header-rename {
+            background: var(--color-surface-2, #111827) !important;
+            color: var(--color-text-1, #e2e8f0) !important;
+            border-color: var(--color-border, rgba(0,212,255,.12)) !important;
+        }
+        [data-theme="light"] #exportModal .export-header-rename {
+            background: #ffffff !important;
+            color: #1a1a2e !important;
+            border-color: #d1d5db !important;
+        }
+        #exportModal .export-header-rename:focus {
+            border-color: var(--color-primary, #00d4ff) !important;
+            box-shadow: 0 0 0 2px rgba(0,212,255,.15);
+        }
+        #exportModal .export-header-rename:disabled {
+            background: var(--color-surface, #0a0e17) !important;
+            cursor: not-allowed;
+            opacity: 0.4;
+        }
+        [data-theme="light"] #exportModal .export-header-rename:disabled {
+            background: #f3f4f6 !important;
+        }
+        #exportScopeHint { line-height: 1.5; }
+        #exportScopeHint strong { font-size: 14px; }
+
         /* ============================================================
            SORTABLE TABLE HEADERS
            ============================================================ */
@@ -2863,7 +2889,7 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label class="form-label" for="boardMac">
-                                        <i class="fas fa-network-wired"></i> 板卡MAC地址
+                                        <i class="fas fa-network-wired"></i> 物理MAC地址
                                     </label>
                                     <input type="text" id="boardMac" class="form-control" 
                                            placeholder="XX:XX:XX:XX:XX:XX" 
@@ -3036,8 +3062,8 @@
                     
                     <div class="batch-toolbar" id="test-records-table-toolbar">
                         <span class="batch-count" id="test-records-table-count">已选 <strong>0</strong> 项</span>
-                        <button class="btn btn-sm btn-primary" onclick="exportSelected('test-records-table', '/device-tests/export-selected')"><i class="fas fa-file-export"></i> 导出选中</button>
-                        <button class="btn btn-sm btn-secondary" onclick="exportBatch('test-records-table', '/device-tests/export-batch')"><i class="fas fa-download"></i> 导出全部（当前筛选）</button>
+                        <button class="btn btn-sm btn-primary" onclick="showExportModal('selected')"><i class="fas fa-file-export"></i> 导出选中</button>
+                        <button class="btn btn-sm btn-secondary" onclick="showExportModal('all')"><i class="fas fa-download"></i> 导出全部（当前筛选）</button>
                     </div>
                     <div class="table-container">
                         <table class="data-table" id="devicesTable">
@@ -3046,7 +3072,8 @@
                                     <th class="col-check"><input type="checkbox" class="select-all-checkbox" data-table="test-records-table"></th>
                                     <th class="sortable" data-sort="id" data-dir="desc">ID <span class="sort-arrow">▼</span></th>
                                     <th>设备编号</th>
-                                    <th style="display:none;">板卡MAC</th>
+                                    <th>设备类型</th>
+                                    <th style="display:none;">物理MAC</th>
                                     <th>无线MAC</th>
                                     <th>IP地址</th>
                                     <th>批次</th>
@@ -3117,7 +3144,7 @@
                                         <th class="col-check"><input type="checkbox" class="select-all-checkbox" data-table="fault-table"></th>
                                         <th>ID</th>
                                         <th>设备编号</th>
-                                        <th style="display:none;">板卡MAC</th>
+                                        <th style="display:none;">物理MAC</th>
                                         <th>无线MAC</th>
                                         <th>IP地址</th>
                                         <th>批次</th>
@@ -3559,10 +3586,7 @@
                     </div>
                     <div class="batch-toolbar" id="batchDeviceToolbar" style="display:none;">
                         <span class="selected-count" id="batchSelectedCount">已选 0 台设备</span>
-                        <button class="btn btn-sm btn-secondary" onclick="batchModifyField('status')"><i class="fas fa-exchange-alt"></i> 修改状态</button>
-                        <button class="btn btn-sm btn-secondary" onclick="batchModifyField('fault_disposition')"><i class="fas fa-clipboard-check"></i> 修改处置</button>
-                        <button class="btn btn-sm btn-secondary" onclick="batchModifyField('operator')"><i class="fas fa-user"></i> 修改操作员</button>
-                        <button class="btn btn-sm btn-warning" onclick="batchModifyMetric()"><i class="fas fa-vial"></i> 修改指标</button>
+                        <button class="btn btn-sm btn-secondary" onclick="showBatchModifyModal()"><i class="fas fa-edit"></i> 批量修改</button>
                         <button class="btn btn-sm btn-error" onclick="batchDeleteSelected()"><i class="fas fa-trash"></i> 删除选中</button>
                         <button class="btn btn-sm btn-primary" onclick="exportBatchDevicesSelected()"><i class="fas fa-file-export"></i> 导出选中</button>
                     </div>
@@ -3573,7 +3597,7 @@
                                     <th class="col-check"><input type="checkbox" id="selectAllDevices" class="device-checkbox"></th>
                                     <th>ID</th>
                                     <th>设备编号</th>
-                                    <th style="display:none;">板卡MAC</th>
+                                    <th style="display:none;">物理MAC</th>
                                     <th>无线MAC</th>
                                     <th>IP地址</th>
                                     <th>状态</th>
@@ -3695,69 +3719,35 @@
 
     <!-- 导出选项模态框 -->
     <div class="modal" id="exportModal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width:520px;">
             <div class="modal-header">
-                <h3 class="modal-title">导出选项</h3>
+                <h3 class="modal-title"><i class="fas fa-download"></i> 导出设置</h3>
                 <button class="modal-close" id="closeExportModal">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">导出格式</label>
-                    <div class="export-options">
-                        <label class="radio-label">
-                            <input type="radio" name="exportFormat" value="excel" checked>
-                            <span>Excel (.xlsx)</span>
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="exportFormat" value="markdown">
-                            <span>Markdown (.md)</span>
-                        </label>
-                    </div>
+                <!-- 导出范围提示 -->
+                <div id="exportScopeHint" style="padding:8px 12px;margin-bottom:16px;border-radius:6px;font-size:12px;background:rgba(0,212,255,.08);border:1px solid rgba(0,212,255,.15);color:var(--color-primary);"></div>
+
+                <!-- 过滤重复数据 -->
+                <div class="form-group" style="margin-bottom:20px;">
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:500;">
+                        <input type="checkbox" id="exportFilterDuplicates" style="width:18px;height:18px;accent-color:var(--color-primary);">
+                        <span>过滤重复数据 <span style="font-size:12px;font-weight:400;color:var(--color-text-3);">（基于设备编号去除重复记录）</span></span>
+                    </label>
                 </div>
-                
+
+                <!-- 导出列设置 -->
                 <div class="form-group">
-                    <label class="form-label">数据范围</label>
-                    <div class="export-options">
-                        <label class="radio-label">
-                            <input type="radio" name="exportScope" value="current" checked>
-                            <span>当前筛选结果</span>
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="exportScope" value="all">
-                            <span>全部数据</span>
-                        </label>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <label class="form-label" style="margin:0;font-weight:600;">导出列设置</label>
+                        <a id="exportToggleAll" style="font-size:12px;color:var(--color-primary);cursor:pointer;text-decoration:none;">全选 / 取消全选</a>
                     </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">包含字段</label>
-                    <div class="checkbox-group">
-                        <label class="checkbox-label">
-                            <input type="checkbox" name="exportFields" value="mac" checked>
-                            <span>MAC地址</span>
-                        </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" name="exportFields" value="ip" checked>
-                            <span>IP地址</span>
-                        </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" name="exportFields" value="status" checked>
-                            <span>状态</span>
-                        </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" name="exportFields" value="fault" checked>
-                            <span>故障信息</span>
-                        </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" name="exportFields" value="dates" checked>
-                            <span>日期时间</span>
-                        </label>
-                    </div>
+                    <div id="exportColumnList" style="max-height:300px;overflow-y:auto;border:1px solid var(--color-border);border-radius:8px;padding:6px;"></div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="cancelExport">取消</button>
-                <button class="btn btn-primary" id="confirmExport">开始导出</button>
+                <button class="btn btn-primary" id="confirmExport"><i class="fas fa-download"></i> 导出</button>
             </div>
         </div>
     </div>
@@ -4902,12 +4892,16 @@
                     dispositionClass = 'status-stored';
                 }
                 
+                const DEVICE_TYPE_LABELS = {'1':'小周天','2':'大周天','3':'周天','4':'智瞳'};
+                const deviceTypeText = DEVICE_TYPE_LABELS[device.device_type] || '--';
+
                 const row = document.createElement('tr');
                 row.dataset.deviceId = device.id;
                 row.innerHTML = `
                     <td class="col-check"><input type="checkbox" class="row-checkbox" data-id="${device.id}" data-table="test-records-table"></td>
                     <td>${device.id}</td>
                     <td><code>${device.device_code || '--'}</code></td>
+                    <td>${deviceTypeText}</td>
                     <td style="display:none;"><code>${device.board_mac}</code></td>
                     <td><code>${device.wireless_mac}</code></td>
                     <td><code>${device.ip_address}</code></td>
@@ -5672,7 +5666,7 @@
                 details.innerHTML = `
                     <div class="device-info">
                         <div class="info-row">
-                            <div class="info-label">板卡MAC:</div>
+                            <div class="info-label">物理MAC:</div>
                             <div class="info-value"><code>${device.board_mac}</code></div>
                         </div>
                         <div class="info-row">
@@ -5749,19 +5743,29 @@
                     <div class="form-row" style="margin-bottom:14px;">
                         <div class="form-group">
                             <label class="form-label">序号</label>
-                            <input type="number" name="sort_order" class="form-control" 
+                            <input type="number" name="sort_order" class="form-control"
                                    value="${device.sort_order || ''}" placeholder="留空自动计算" min="1">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">设备编号</label>
-                            <input type="text" class="form-control" readonly 
-                                   value="${device.device_code || '--'}" 
-                                   style="font-family:var(--font-mono);color:var(--color-primary);cursor:default;">
+                            <label class="form-label">设备编号 <span style="font-weight:400;font-size:11px;color:var(--color-text-3);">（8位）</span></label>
+                            <input type="text" name="device_code" class="form-control"
+                                   value="${device.device_code || ''}" maxlength="8"
+                                   placeholder="8位字母数字" style="text-transform:uppercase;font-family:var(--font-mono);">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">设备类型</label>
+                            <select name="device_type" class="form-control">
+                                <option value="" ${!device.device_type ? 'selected' : ''}>-- 请选择 --</option>
+                                <option value="1" ${device.device_type === '1' ? 'selected' : ''}>小周天</option>
+                                <option value="2" ${device.device_type === '2' ? 'selected' : ''}>大周天</option>
+                                <option value="3" ${device.device_type === '3' ? 'selected' : ''}>周天</option>
+                                <option value="4" ${device.device_type === '4' ? 'selected' : ''}>智瞳</option>
+                            </select>
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">板卡MAC</label>
+                            <label class="form-label">物理MAC</label>
                             <input type="text" name="board_mac" class="form-control" 
                                    value="${device.board_mac}" required>
                         </div>
@@ -5885,7 +5889,7 @@
                     modalBody.appendChild(panel);
                 }
 
-                // 板卡MAC变更时更新设备编号预览
+                // 物理MAC变更时更新设备编号预览
                 setTimeout(() => {
                     const boardMacInput = form.querySelector('input[name="board_mac"]');
                     if (boardMacInput) {
@@ -6399,54 +6403,227 @@
             window.addEventListener('resize', () => instance.resize());
         }
         
-        // 导出数据
-        async function exportData(format) {
-            const search = document.getElementById('searchInput').value;
-            const status = document.getElementById('statusFilter').value;
-            const disposition = document.getElementById('dispositionFilter').value;
-            
-            let endpoint = `/export/${format}?`;
-            const params = [];
-            
-            if (search) params.push(`search=${encodeURIComponent(search)}`);
-            if (status) params.push(`status=${status}`);
-            if (disposition) params.push(`disposition=${disposition}`);
-            
-            if (params.length > 0) {
-                endpoint += params.join('&');
-            }
-            
-            // 触发下载
-            const link = document.createElement('a');
-            link.href = API_BASE_URL + endpoint;
-            link.download = `hardware_test_export_${new Date().toISOString().slice(0, 10)}.${format === 'excel' ? 'xlsx' : 'md'}`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            showNotification(`导出${format === 'excel' ? 'Excel' : 'Markdown'}文件已开始下载`, 'success');
+        // 导出列配置
+        const EXPORT_COLUMNS = [
+            { key: 'device_code', label: '设备编号', default: true },
+            { key: 'device_type', label: '设备类型', default: true },
+            { key: 'board_mac', label: '物理MAC', default: false },
+            { key: 'wireless_mac', label: 'MAC地址', default: true },
+            { key: 'ip_address', label: 'IP地址', default: false },
+            { key: 'status', label: '状态', default: false },
+            { key: 'fault_reason', label: '故障原因', default: false },
+            { key: 'fault_disposition', label: '处置方式', default: false },
+            { key: 'test_date', label: '测试时间', default: false },
+            { key: 'operator', label: '操作员', default: false },
+            { key: 'notes', label: '备注', default: true },
+        ];
+
+        // 渲染导出列选项
+        function renderExportColumns() {
+            const list = document.getElementById('exportColumnList');
+            if (!list) return;
+            list.innerHTML = EXPORT_COLUMNS.map(col => `
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;transition:background .15s;"
+                     onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background='transparent'">
+                    <input type="checkbox" class="export-col-check" value="${col.key}" ${col.default ? 'checked' : ''}
+                           style="width:16px;height:16px;accent-color:var(--color-primary);flex-shrink:0;">
+                    <span style="min-width:70px;font-size:13px;color:var(--color-text-2);">${col.label}</span>
+                    <input type="text" class="export-header-rename" data-col="${col.key}" value="${col.label}" placeholder="自定义列名"
+                           style="flex:1;height:32px;font-size:12px;padding:4px 8px;border:1px solid var(--color-border);border-radius:4px;background:var(--color-surface);color:var(--color-text-1);outline:none;transition:border .2s;"
+                           onfocus="this.style.borderColor='var(--color-primary)'" onblur="this.style.borderColor='var(--color-border)'">
+                </div>
+            `).join('');
+
+            // 全选/取消全选
+            document.getElementById('exportToggleAll').onclick = function() {
+                const checks = list.querySelectorAll('.export-col-check');
+                const allChecked = Array.from(checks).every(c => c.checked);
+                checks.forEach(c => {
+                    c.checked = !allChecked;
+                    c.dispatchEvent(new Event('change'));
+                });
+            };
+
+            // 复选框联动：取消勾选时清空重命名输入框，勾选时恢复
+            list.querySelectorAll('.export-col-check').forEach(cb => {
+                cb.addEventListener('change', function() {
+                    const renameInput = this.closest('div').querySelector('.export-header-rename');
+                    const col = EXPORT_COLUMNS.find(c => c.key === this.value);
+                    if (!this.checked) {
+                        renameInput.disabled = true;
+                        renameInput.style.opacity = '0.4';
+                    } else {
+                        renameInput.disabled = false;
+                        renameInput.style.opacity = '1';
+                        if (!renameInput.value || renameInput.value === '') {
+                            renameInput.value = col ? col.label : '';
+                        }
+                    }
+                });
+            });
+
+            // 初始化状态
+            list.querySelectorAll('.export-col-check').forEach(cb => {
+                cb.dispatchEvent(new Event('change'));
+            });
         }
-        
-        // 显示导出模态框
-        function showExportModal() {
-            document.getElementById('exportModal').classList.add('active');
-            
-            // 确认导出
-            document.getElementById('confirmExport').addEventListener('click', function() {
-                const format = document.querySelector('input[name="exportFormat"]:checked').value;
-                const scope = document.querySelector('input[name="exportScope"]:checked').value;
-                
-                // 根据选择调整参数
-                if (scope === 'all') {
-                    // 清除筛选条件
-                    document.getElementById('searchInput').value = '';
-                    document.getElementById('statusFilter').value = '';
-                    document.getElementById('dispositionFilter').value = '';
+
+        // 获取当前选中的设备（多选导出）
+        // 兼容两种 checkbox 样式：device-checkbox（批次详情）和 row-checkbox（设备列表）
+        function getSelectedDeviceIds() {
+            const batchCheckboxes = document.querySelectorAll('.device-checkbox:not(#selectAllDevices):checked');
+            const listCheckboxes = document.querySelectorAll('.row-checkbox[data-table="test-records-table"]:checked');
+            const all = [...batchCheckboxes, ...listCheckboxes];
+            return all.map(cb => parseInt(cb.dataset.id)).filter(id => !isNaN(id));
+        }
+
+        // 导出数据
+        async function exportData() {
+            const filterDuplicates = document.getElementById('exportFilterDuplicates').checked;
+            const checks = document.querySelectorAll('.export-col-check');
+            const renames = document.querySelectorAll('.export-header-rename');
+
+            const columns = [];
+            const headerOverrides = {};
+            checks.forEach(c => {
+                if (c.checked) columns.push(c.value);
+            });
+            renames.forEach(r => {
+                if (r.value && r.value.trim()) {
+                    headerOverrides[r.dataset.col] = r.value.trim();
                 }
-                
-                exportData(format);
+            });
+
+            if (!columns.length) {
+                showNotification('请至少选择一个导出列', 'error');
+                return;
+            }
+
+            if (!currentExportDevices.length) {
+                showNotification('没有可导出的数据', 'error');
+                return;
+            }
+
+            try {
+                const exportRes = await fetch(`${API_BASE_URL}/export/excel-custom`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        devices: currentExportDevices,
+                        filter_duplicates: filterDuplicates,
+                        columns: columns,
+                        header_overrides: headerOverrides
+                    })
+                });
+
+                if (!exportRes.ok) throw new Error('导出请求失败');
+
+                const blob = await exportRes.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `设备列表_${new Date().toISOString().slice(0,10)}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(url);
+
+                const finalCount = filterDuplicates ? countAfterDedup(currentExportDevices) : currentExportDevices.length;
+                showNotification(`导出成功，共 ${finalCount} 条记录`, 'success');
                 hideExportModal();
-            }, { once: true });
+            } catch (e) {
+                showNotification('导出失败: ' + e.message, 'error');
+            }
+        }
+
+        // 当前导出模式：'selected' | 'all'
+        let currentExportMode = 'all';
+        // 当前待导出的设备数据缓存
+        let currentExportDevices = [];
+
+        // 统计去重后数量（按 device_code 去重）
+        function countAfterDedup(devices) {
+            const seen = new Set();
+            return devices.filter(d => {
+                const code = d.device_code || d.board_mac || '';
+                if (!code || seen.has(code)) return false;
+                seen.add(code);
+                return true;
+            }).length;
+        }
+
+        // 更新导出范围提示
+        function updateExportHint() {
+            const hint = document.getElementById('exportScopeHint');
+            const total = currentExportDevices.length;
+            const dedupOn = document.getElementById('exportFilterDuplicates').checked;
+            const filtered = dedupOn ? countAfterDedup(currentExportDevices) : total;
+
+            if (currentExportMode === 'selected') {
+                if (dedupOn && total !== filtered) {
+                    hint.innerHTML = `<i class="fas fa-check-circle"></i> 已选 <strong>${total}</strong> 台，去重后 <strong>${filtered}</strong> 台`;
+                } else {
+                    hint.innerHTML = `<i class="fas fa-check-circle"></i> 已选 <strong>${total}</strong> 台设备`;
+                }
+            } else {
+                const search = document.getElementById('searchInput').value;
+                const status = document.getElementById('statusFilter').value;
+                const disposition = document.getElementById('dispositionFilter').value;
+                const scopeText = (search || status || disposition) ? '当前筛选' : '全部';
+                if (dedupOn && total !== filtered) {
+                    hint.innerHTML = `<i class="fas fa-filter"></i> ${scopeText}共 <strong>${total}</strong> 台，去重后 <strong>${filtered}</strong> 台`;
+                } else {
+                    hint.innerHTML = `<i class="fas fa-info-circle"></i> 将导出${scopeText} <strong>${total}</strong> 台设备`;
+                }
+            }
+        }
+
+        // 显示导出模态框
+        async function showExportModal(mode) {
+            currentExportMode = mode || 'all';
+            renderExportColumns();
+
+            // 预加载设备数据
+            currentExportDevices = [];
+            const selectedIds = getSelectedDeviceIds();
+
+            try {
+                if (currentExportMode === 'selected' && selectedIds.length > 0) {
+                    const res = await fetch(`${API_BASE_URL}/devices?per_page=1000`, { credentials: 'include' });
+                    const json = await res.json();
+                    const all = json.data?.items || json.data || json.items || json || [];
+                    currentExportDevices = Array.isArray(all) ? all.filter(d => selectedIds.includes(d.id)) : [];
+                } else {
+                    const search = document.getElementById('searchInput').value;
+                    const status = document.getElementById('statusFilter').value;
+                    const disposition = document.getElementById('dispositionFilter').value;
+                    let endpoint = `${API_BASE_URL}/devices?per_page=1000`;
+                    if (search) endpoint += `&search=${encodeURIComponent(search)}`;
+                    if (status) endpoint += `&status=${status}`;
+                    if (disposition) endpoint += `&disposition=${disposition}`;
+                    const res = await fetch(endpoint, { credentials: 'include' });
+                    const json = await res.json();
+                    currentExportDevices = json.data?.items || json.data || json.items || json || [];
+                    if (!Array.isArray(currentExportDevices)) currentExportDevices = [];
+                }
+            } catch (e) {
+                console.error('加载设备数据失败:', e);
+            }
+
+            // 初始提示
+            updateExportHint();
+
+            // 去重开关联动提示
+            document.getElementById('exportFilterDuplicates').onchange = function() {
+                updateExportHint();
+            };
+
+            document.getElementById('exportModal').classList.add('active');
+
+            document.getElementById('confirmExport').onclick = function() {
+                exportData();
+            };
         }
         
         // 隐藏模态框
@@ -6743,7 +6920,23 @@
                         </div>
                         <div class="form-row">
                             <div class="form-group" style="flex:1;">
-                                <label class="form-label" for="adBoardMac">板卡MAC <span class="required">*</span></label>
+                                <label class="form-label" for="adDeviceCode">设备编号 <span style="font-weight:400;font-size:11px;color:var(--color-text-3);">（选填，8位自动生成）</span></label>
+                                <input type="text" id="adDeviceCode" class="form-control" placeholder="留空自动生成" maxlength="8" style="text-transform:uppercase;">
+                            </div>
+                            <div class="form-group" style="flex:1;">
+                                <label class="form-label" for="adDeviceType">设备类型</label>
+                                <select id="adDeviceType" class="form-control">
+                                    <option value="">-- 请选择 --</option>
+                                    <option value="1">小周天</option>
+                                    <option value="2">大周天</option>
+                                    <option value="3">周天</option>
+                                    <option value="4">智瞳</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" style="flex:1;">
+                                <label class="form-label" for="adBoardMac">物理MAC <span class="required">*</span></label>
                                 <div style="display:flex;align-items:center;">
                                     <input type="text" id="adBoardMac" class="form-control" placeholder="00:1A:2B:3C:4D:5E" required style="flex:1;">
                                     <span class="custom-number-badge" id="adCustomNumberBadge" style="display:none;">
@@ -7516,10 +7709,12 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                 deviceMap[r.device_id][r.standard_id][r.metric_name] = r.pass;
             });
 
-            // 只统计当前批次关联的标准（来自 _metricStandards）；若 _metricStandards 为空则降级展示全部
-            const useStdIds = _metricStandards.length > 0
-                ? new Set([...stdIds].filter(sid => _metricStandards.some(s => s.id === sid)))
-                : stdIds;
+            // 只统计当前批次关联的标准（来自 _metricStandards）；若无关联标准则直接返回空
+            if (_metricStandards.length === 0) {
+                window._cachedDevicePass = { totalDevices: 0, goodDevices: 0, stdStats: {} };
+                return window._cachedDevicePass;
+            }
+            const useStdIds = new Set([...stdIds].filter(sid => _metricStandards.some(s => s.id === sid)));
             console.log('[calcDevicePassStatus] _metricStandards:', _metricStandards.map(s => ({id: s.id, name: s.name})), 'stdIds:', [...stdIds], 'useStdIds:', [...useStdIds]);
 
             const totalDevices = (window._batchData && window._batchData.total_count) || allDeviceIds.size || 0;
@@ -7607,7 +7802,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             const metricsOverview = document.getElementById('metricsOverviewCard');
             if (!metricsOverview) return;
             const statusKey = (window._batchData && window._batchData.status) || '';
-            if (statusKey !== 'completed') {
+            if (statusKey !== 'completed' || _metricStandards.length === 0) {
                 metricsOverview.style.display = 'none';
                 return;
             }
@@ -7946,6 +8141,8 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             const wireless_mac = document.getElementById('adWirelessMac').value.trim();
             const ip_address = document.getElementById('adIpAddress').value.trim();
             const status = document.getElementById('adStatus').value;
+            const device_type = document.getElementById('adDeviceType').value;
+            const device_code = document.getElementById('adDeviceCode').value.trim();
             const fault_reason = document.getElementById('adFaultReason').value.trim();
             const notes = document.getElementById('adNotes').value.trim();
             const test_date = document.getElementById('adTestDate').value || null;
@@ -7976,7 +8173,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             // MAC address validation
             const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
             const isCustomNumber = board_mac && !macRegex.test(board_mac);
-            if (!board_mac) { showFieldError('adBoardMac', '请输入板卡MAC地址或自定义编号'); }
+            if (!board_mac) { showFieldError('adBoardMac', '请输入物理MAC地址或自定义编号'); }
 
             if (isCustomNumber) {
                 // Custom number mode: wireless_mac and ip_address are auto "未知", skip validation
@@ -7996,7 +8193,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             if (hasError) return;
 
             const payload = {
-                board_mac, wireless_mac, ip_address, status,
+                board_mac, wireless_mac, ip_address, status, device_type, device_code,
                 fault_reason: fault_reason || null,
                 notes: notes || null,
                 test_date: test_date ? new Date(test_date).toISOString() : null,
@@ -8064,14 +8261,22 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                     progressFill.style.width = pct + '%';
 
                     // Map Excel headers to field names
-                    const board_mac = row['板卡MAC'] || row['board_mac'] || '';
+                    const board_mac = row['物理MAC'] || row['物理MAC'] || row['board_mac'] || '';
                     const wireless_mac = row['无线MAC'] || row['wireless_mac'] || '';
                     const ip_address = row['IP地址'] || row['ip_address'] || '';
+                    const device_code_raw = (row['设备编号'] || row['device_code'] || '').toString().trim();
+                    const device_type_raw = (row['设备类型'] || row['device_type'] || '').toString().trim();
                     const status = (row['状态'] || row['status'] || '正常').trim();
                     const fault_reason = row['故障原因/现象'] || row['fault_reason'] || '';
                     const notes = row['备注'] || row['notes'] || '';
                     const test_date = row['测试时间'] || row['test_date'] || null;
                     const operator = row['操作员'] || row['operator'] || (currentUser ? currentUser.username : '');
+
+                    // 设备类型：支持数字或中文
+                    const deviceTypeMap = {'1':'1','2':'2','3':'3','4':'4','小周天':'1','大周天':'2','周天':'3','智瞳':'4'};
+                    const device_type = deviceTypeMap[device_type_raw] || '';
+                    // 设备编号：8位字母数字则使用，否则留空自动生成
+                    const device_code = (device_code_raw && device_code_raw.length === 8 && /^[A-Za-z0-9]{8}$/.test(device_code_raw)) ? device_code_raw.toUpperCase() : '';
 
                     if (!board_mac || !wireless_mac || !ip_address) {
                         failCount++;
@@ -8083,6 +8288,8 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                         board_mac: board_mac.toUpperCase(),
                         wireless_mac: wireless_mac.toUpperCase(),
                         ip_address,
+                        device_type,
+                        device_code,
                         status: (status === '正常' || status.toLowerCase() === 'normal') ? 'normal' : 'fault',
                         fault_reason: fault_reason || '',
                         notes: notes || '',
@@ -8267,7 +8474,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             tbody.innerHTML = '';
 
             // Build dynamic header
-            let headerHtml = '<th class="col-check"><input type="checkbox" id="selectAllDevices" class="device-checkbox"></th><th>ID</th><th>设备编号</th><th style="display:none;">板卡MAC</th><th>无线MAC</th><th>IP地址</th><th>状态</th><th>故障原因</th><th>处置</th><th>测试时间</th><th>操作员</th>';
+            let headerHtml = '<th class="col-check"><input type="checkbox" id="selectAllDevices" class="device-checkbox"></th><th>ID</th><th>设备编号</th><th>设备类型</th><th style="display:none;">物理MAC</th><th>无线MAC</th><th>IP地址</th><th>状态</th><th>故障原因</th><th>处置</th><th>测试时间</th><th>操作员</th>';
             const metricHeaders = [];
             _metricStandards.forEach(std => {
                 (std.metrics || []).forEach(m => {
@@ -8324,11 +8531,15 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                     }
                 });
 
+                const DEVICE_TYPE_LABELS = {'1':'小周天','2':'大周天','3':'周天','4':'智瞳'};
+                const deviceTypeText = DEVICE_TYPE_LABELS[device.device_type] || '--';
+
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td class="col-check"><input type="checkbox" class="device-checkbox" data-id="${device.id}"></td>
                     <td>${device.id}</td>
                     <td><code>${device.device_code || '--'}</code></td>
+                    <td>${deviceTypeText}</td>
                     <td style="display:none;"><code>${device.board_mac}</code></td>
                     <td><code>${device.wireless_mac}</code></td>
                     <td><code>${device.ip_address}</code></td>
@@ -8373,7 +8584,10 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
         }
 
         function getSelectedDeviceIds() {
-            return [...document.querySelectorAll('.device-checkbox:not(#selectAllDevices):checked')].map(cb => parseInt(cb.dataset.id));
+            const batchCheckboxes = document.querySelectorAll('.device-checkbox:not(#selectAllDevices):checked');
+            const listCheckboxes = document.querySelectorAll('.row-checkbox[data-table="test-records-table"]:checked');
+            const all = [...batchCheckboxes, ...listCheckboxes];
+            return all.map(cb => parseInt(cb.dataset.id)).filter(id => !isNaN(id));
         }
 
         async function exportBatchDevicesSelected() {
@@ -8397,118 +8611,12 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             }
         }
 
-        async function batchModifyField(field) {
+        // 批量修改 - 统一弹窗
+        async function showBatchModifyModal() {
             const ids = getSelectedDeviceIds();
             if (!ids.length) return;
 
-            // Remove any existing batch-modify modal
-            const oldModal = document.getElementById('batchFieldModal');
-            if (oldModal) oldModal.remove();
-
-            let title = '', options = [], inputMode = false;
-            if (field === 'status') {
-                title = '修改设备状态';
-                options = [
-                    {label: '正常', value: 'normal', dot: 'dot-normal'},
-                    {label: '故障', value: 'fault', dot: 'dot-fault'},
-                    {label: '待测', value: 'pending', dot: 'dot-pending'}
-                ];
-            } else if (field === 'fault_disposition') {
-                title = '修改故障处置';
-                options = [
-                    {label: '待返厂', value: '待返厂', dot: 'dot-returned'},
-                    {label: '返厂中', value: '返厂中', dot: 'dot-returning'},
-                    {label: '已返厂', value: '已返厂', dot: 'dot-returned-done'},
-                    {label: '已入库', value: 'stored', dot: 'dot-stored'},
-                    {label: '待处理', value: 'pending', dot: 'dot-pending'}
-                ];
-            } else if (field === 'operator') {
-                title = '修改操作员';
-                inputMode = true;
-            }
-
-            // Build modal HTML
-            let optionsHtml = '';
-            if (inputMode) {
-                optionsHtml = `<div style="padding:12px 0;"><input type="text" id="batchFieldInput" class="form-control" placeholder="输入操作员姓名" style="width:100%;"></div>`;
-            } else {
-                optionsHtml = '<div style="padding:4px 0;">';
-                options.forEach((opt, i) => {
-                    optionsHtml += `<div class="status-dropdown-item batch-field-option" data-value="${opt.value}" style="padding:10px 14px;font-size:13px;border-radius:var(--radius-sm);margin:2px 0;">
-                        <span class="dot ${opt.dot}" style="width:10px;height:10px;border-radius:50%;flex-shrink:0;"></span>
-                        ${opt.label}
-                    </div>`;
-                });
-                optionsHtml += '</div>';
-            }
-
-            const modal = document.createElement('div');
-            modal.id = 'batchFieldModal';
-            modal.className = 'modal active';
-            modal.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('batchFieldModal').remove()"></div>
-                <div class="modal-card" style="max-width:380px;">
-                    <div class="modal-header"><h3><i class="fas fa-exchange-alt"></i> ${title}</h3>
-                        <button class="modal-close" onclick="document.getElementById('batchFieldModal').remove()">&times;</button>
-                    </div>
-                    <div class="modal-body" style="padding:12px 20px;">
-                        <p style="font-size:12px;color:var(--color-text-2);margin-bottom:8px;">已选 <strong style="color:var(--color-primary);">${ids.length}</strong> 台设备</p>
-                        ${optionsHtml}
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('batchFieldModal').remove()">取消</button>
-                        ${!inputMode ? `<button class="btn btn-sm btn-primary" id="batchFieldConfirm" disabled>确认修改</button>` : `<button class="btn btn-sm btn-primary" id="batchFieldConfirm">确认修改</button>`}
-                    </div>
-                </div>`;
-            document.body.appendChild(modal);
-
-            let selectedValue = null;
-
-            if (!inputMode) {
-                // Bind option clicks
-                modal.querySelectorAll('.batch-field-option').forEach(el => {
-                    el.addEventListener('click', () => {
-                        modal.querySelectorAll('.batch-field-option').forEach(e => e.style.background = '');
-                        el.style.background = 'rgba(0,212,255,.1)';
-                        selectedValue = el.dataset.value;
-                        document.getElementById('batchFieldConfirm').disabled = false;
-                    });
-                });
-
-                document.getElementById('batchFieldConfirm').addEventListener('click', async () => {
-                    if (!selectedValue) return;
-                    modal.remove();
-                    await _execBatchFieldUpdate(ids, field, selectedValue);
-                });
-            } else {
-                document.getElementById('batchFieldConfirm').addEventListener('click', async () => {
-                    const val = document.getElementById('batchFieldInput').value.trim();
-                    if (!val) return;
-                    modal.remove();
-                    await _execBatchFieldUpdate(ids, field, val);
-                });
-            }
-        }
-
-        async function _execBatchFieldUpdate(ids, field, value) {
-            try {
-                const res = await apiCall(`/devices/batch`, 'PUT', {ids, field, value: value || null});
-                showNotification(res?.message || '更新成功', 'success');
-                if (currentBatchId) {
-                    await loadBatchDevices(currentBatchId);
-                    updateRatingAndMetrics();
-                }
-            } catch(e) { /* apiCall already shows notification */ }
-        }
-
-        async function batchModifyMetric() {
-            const ids = getSelectedDeviceIds();
-            if (!ids.length) return;
-
-            // Remove any existing modal
-            const oldModal = document.getElementById('batchMetricModal');
-            if (oldModal) oldModal.remove();
-
-            // Get standards
+            // 获取测试标准用于指标修改
             let standards = _metricStandards;
             if (!standards || !standards.length) {
                 try {
@@ -8517,112 +8625,146 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                     standards = batchStdName ? allStds.filter(s => s.name === batchStdName) : allStds;
                 } catch(e) {}
             }
-            if (!standards || !standards.length) {
-                showNotification('未找到测试标准', 'warning');
-                return;
+
+            // 构建指标选择HTML
+            let metricsHtml = '';
+            if (standards && standards.length) {
+                standards.forEach(std => {
+                    const mets = std.metrics || [];
+                    if (mets.length > 0) {
+                        metricsHtml += `<div style="font-size:11px;font-weight:700;color:var(--color-primary);margin:14px 0 6px;padding-left:4px;border-left:3px solid var(--color-primary);">${std.name}</div>`;
+                    }
+                    mets.forEach(m => {
+                        metricsHtml += `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;margin:3px 0;font-size:12px;border-radius:var(--radius-sm);background:rgba(0,0,0,.15);border:1px solid var(--color-border-subtle);">
+                            <span style="flex:1;min-width:0;color:var(--color-text-2);">${m.name}</span>
+                            <select class="form-control bm-sel" data-std="${std.id}" data-metric="${m.name.replace(/"/g,'&quot;')}" style="width:110px;font-size:11px;padding:4px 8px;">
+                                <option value="" selected>不修改</option>
+                                <option value="1">通过</option>
+                                <option value="0">不通过</option>
+                            </select>
+                        </div>`;
+                    });
+                });
             }
 
-            // Build metrics list from all standards
-            let metricsHtml = '';
-            let allMetrics = []; // [{stdId, stdName, metricName}]
-            standards.forEach(std => {
-                const mets = std.metrics || [];
-                if (mets.length > 0) {
-                    metricsHtml += `<div style="font-size:11px;font-weight:700;color:var(--color-primary);margin:12px 0 6px;padding-left:4px;border-left:3px solid var(--color-primary);">${std.name}</div>`;
-                }
-                mets.forEach(m => {
-                    const uid = `bm_${std.id}_${m.name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g,'_')}`;
-                    allMetrics.push({stdId: std.id, stdName: std.name, metricName: m.name, uid});
-                    metricsHtml += `<div class="metric-toggle-row" style="display:flex;align-items:center;gap:10px;padding:8px 10px;margin:3px 0;font-size:12px;border-radius:var(--radius-sm);background:rgba(0,0,0,.15);border:1px solid var(--color-border-subtle);">
-                        <span style="flex:1;min-width:0;color:var(--color-text-2);">${m.name}</span>
-                        <label class="metric-pass-toggle" style="cursor:pointer;">
-                            <input type="checkbox" class="bm-check" id="${uid}" data-std="${std.id}" data-metric="${m.name.replace(/"/g,'&quot;')}">
-                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                            <span class="toggle-label bm-label-${uid}">忽略</span>
-                        </label>
-                    </div>`;
-                });
-            });
-
-            // Three-state toggle logic: unchecked=忽略, checked once=通过, checked twice=不通过
-            // We'll use a custom data-state attribute: "" (忽略), "pass" (通过), "fail" (不通过)
-            // Actually, we can use a tri-state approach. But simpler: use checkboxes where:
-            // - Not checked: ignore (default)
-            // - Checked: pass
-            // We'll add a separate indicator for pass/fail via a select or radio.
-            // Simpler approach: add a pass/fail toggle next to each metric
-
-            // Better approach: use a single toggle with three states, or use radio buttons.
-            // Let me use a <select> or two radio buttons + ignore
-            // Even simpler: a <select> with options: 忽略 / 通过(1) / 不通过(0)
-
-            // Let me rebuild with select dropdown
-            let metricsHtml2 = '';
-            let allMetrics2 = [];
-            standards.forEach(std => {
-                const mets = std.metrics || [];
-                if (mets.length > 0) {
-                    metricsHtml2 += `<div style="font-size:11px;font-weight:700;color:var(--color-primary);margin:12px 0 6px;padding-left:4px;border-left:3px solid var(--color-primary);">${std.name}</div>`;
-                }
-                mets.forEach(m => {
-                    const uid = `bm_${std.id}_${m.name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g,'_')}`;
-                    allMetrics2.push({stdId: std.id, stdName: std.name, metricName: m.name, uid});
-                    metricsHtml2 += `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;margin:3px 0;font-size:12px;border-radius:var(--radius-sm);background:rgba(0,0,0,.15);border:1px solid var(--color-border-subtle);">
-                        <span style="flex:1;min-width:0;color:var(--color-text-2);">${m.name}</span>
-                        <select class="form-control bm-sel" data-std="${std.id}" data-metric="${m.name.replace(/"/g,'&quot;')}" style="width:110px;font-size:11px;padding:4px 8px;">
-                            <option value="" selected>忽略此项</option>
-                            <option value="1">通过</option>
-                            <option value="0">不通过</option>
-                        </select>
-                    </div>`;
-                });
-            });
+            // 移除旧弹窗
+            const old = document.getElementById('batchModifyModal');
+            if (old) old.remove();
 
             const modal = document.createElement('div');
-            modal.id = 'batchMetricModal';
+            modal.id = 'batchModifyModal';
             modal.className = 'modal active';
-            modal.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('batchMetricModal').remove()"></div>
-                <div class="modal-card" style="max-width:520px;">
-                    <div class="modal-header"><h3><i class="fas fa-vial"></i> 批量修改测试指标</h3>
-                        <button class="modal-close" onclick="document.getElementById('batchMetricModal').remove()">&times;</button>
+            modal.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('batchModifyModal').remove()"></div>
+                <div class="modal-card" style="max-width:500px;">
+                    <div class="modal-header"><h3><i class="fas fa-edit"></i> 批量修改</h3>
+                        <button class="modal-close" onclick="document.getElementById('batchModifyModal').remove()">&times;</button>
                     </div>
-                    <div class="modal-body" style="padding:12px 20px;max-height:60vh;overflow-y:auto;">
-                        <p style="font-size:12px;color:var(--color-text-2);margin-bottom:8px;">已选 <strong style="color:var(--color-primary);">${ids.length}</strong> 台设备，默认所有指标为"忽略此项"（不修改），仅提交主动设为通过/不通过的指标。</p>
-                        ${metricsHtml2}
+                    <div class="modal-body" style="padding:16px 20px;max-height:65vh;overflow-y:auto;">
+                        <p style="font-size:12px;color:var(--color-text-2);margin-bottom:14px;">已选 <strong style="color:var(--color-primary);">${ids.length}</strong> 台设备 · 不修改的字段保持为空即可</p>
+
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                            <div class="form-group" style="margin:0;">
+                                <label class="form-label" style="font-size:12px;">设备类型</label>
+                                <select id="bmDeviceType" class="form-control" style="font-size:12px;">
+                                    <option value="">不修改</option>
+                                    <option value="1">小周天</option>
+                                    <option value="2">大周天</option>
+                                    <option value="3">周天</option>
+                                    <option value="4">智瞳</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label class="form-label" style="font-size:12px;">状态</label>
+                                <select id="bmStatus" class="form-control" style="font-size:12px;">
+                                    <option value="">不修改</option>
+                                    <option value="normal">正常</option>
+                                    <option value="fault">故障</option>
+                                    <option value="pending">待测</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+                            <div class="form-group" style="margin:0;">
+                                <label class="form-label" style="font-size:12px;">处置方式</label>
+                                <select id="bmDisposal" class="form-control" style="font-size:12px;">
+                                    <option value="">不修改</option>
+                                    <option value="待返厂">待返厂</option>
+                                    <option value="返厂中">返厂中</option>
+                                    <option value="已返厂">已返厂</option>
+                                    <option value="stored">已入库</option>
+                                    <option value="pending">待处理</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label class="form-label" style="font-size:12px;">操作员</label>
+                                <input type="text" id="bmOperator" class="form-control" placeholder="不修改" style="font-size:12px;">
+                            </div>
+                        </div>
+
+                        ${metricsHtml ? `<div style="margin-top:16px;border-top:1px solid var(--color-border-subtle);padding-top:12px;">
+                            <div style="font-size:13px;font-weight:600;color:var(--color-text-1);margin-bottom:6px;">测试指标</div>
+                            <p style="font-size:11px;color:var(--color-text-3);margin-bottom:8px;">不修改的指标保持"不修改"即可</p>
+                            ${metricsHtml}
+                        </div>` : ''}
                     </div>
                     <div class="modal-footer">
-                        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('batchMetricModal').remove()">取消</button>
-                        <button class="btn btn-sm btn-primary" id="batchMetricConfirm">确认修改</button>
+                        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('batchModifyModal').remove()">取消</button>
+                        <button class="btn btn-sm btn-primary" id="batchModifyConfirm">确认修改</button>
                     </div>
                 </div>`;
             document.body.appendChild(modal);
 
-            document.getElementById('batchMetricConfirm').addEventListener('click', async () => {
-                const selects = modal.querySelectorAll('.bm-sel');
-                const results = [];
-                selects.forEach(sel => {
-                    const v = sel.value;
-                    if (v === '') return; // ignore
-                    results.push({
-                        standard_id: parseInt(sel.dataset.std),
-                        metric_name: sel.dataset.metric,
-                        pass: v === '1'
-                    });
+            // 确认修改
+            document.getElementById('batchModifyConfirm').addEventListener('click', async () => {
+                const updates = [];
+
+                // 设备类型
+                const deviceType = document.getElementById('bmDeviceType').value;
+                if (deviceType) updates.push(_execBatchFieldUpdate(ids, 'device_type', deviceType));
+
+                // 状态
+                const status = document.getElementById('bmStatus').value;
+                if (status) updates.push(_execBatchFieldUpdate(ids, 'status', status));
+
+                // 处置方式
+                const disposal = document.getElementById('bmDisposal').value;
+                if (disposal) updates.push(_execBatchFieldUpdate(ids, 'fault_disposition', disposal));
+
+                // 操作员
+                const operator = document.getElementById('bmOperator').value.trim();
+                if (operator) updates.push(_execBatchFieldUpdate(ids, 'operator', operator));
+
+                // 测试指标
+                const metricSelects = modal.querySelectorAll('.bm-sel');
+                metricSelects.forEach(sel => {
+                    if (sel.value) {
+                        updates.push(apiCall('/devices/batch/results', 'PUT', {
+                            ids,
+                            standard_id: parseInt(sel.dataset.std),
+                            metric_name: sel.dataset.metric,
+                            pass: sel.value === '1'
+                        }));
+                    }
                 });
-                if (results.length === 0) {
-                    showNotification('未选择任何要修改的指标', 'warning');
+
+                if (updates.length === 0) {
+                    showNotification('未做任何修改', 'warning');
                     return;
                 }
+
                 modal.remove();
-                try {
-                    const res = await apiCall(`/devices/batch/results`, 'PUT', {ids, results});
-                    showNotification(res?.message || '更新成功', 'success');
-                    if (currentBatchId) {
-                        await loadBatchDevices(currentBatchId);
-                        updateRatingAndMetrics();
-                    }
-                } catch(e) { /* apiCall already shows notification */ }
+                await Promise.all(updates);
+                showNotification(`已更新 ${updates.length} 项`, 'success');
+                if (currentBatchId) {
+                    await loadBatchDevices(currentBatchId);
+                    updateRatingAndMetrics();
+                }
             });
+        }
+
+        async function _execBatchFieldUpdate(ids, field, value) {
+            return apiCall(`/devices/batch`, 'PUT', {ids, field, value: value || null});
         }
 
         async function batchDeleteSelected() {
@@ -9428,7 +9570,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                 if (record.devices && record.devices.length > 0) {
                     html += '<h4 style="font-size:13px;margin-bottom:8px;color:var(--color-text-2);">关联设备</h4>';
                     html += '<div class="table-container"><table class="data-table"><thead><tr>';
-                    html += '<th>设备ID</th><th style="display:none;">板卡MAC</th><th>无线MAC</th><th>IP地址</th><th>状态</th><th>故障原因</th>';
+                    html += '<th>设备ID</th><th style="display:none;">物理MAC</th><th>无线MAC</th><th>IP地址</th><th>状态</th><th>故障原因</th>';
                     html += '</tr></thead><tbody>';
                     record.devices.forEach(d => {
                         html += `<tr>

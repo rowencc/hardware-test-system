@@ -186,12 +186,13 @@ class DeviceTest(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     board_mac = Column(String(17), nullable=False, comment="板卡MAC地址")
     device_code = Column(String(64), default="", comment="设备编号（MAC去冒号大写）")
-    wireless_mac = Column(String(17), nullable=False, comment="无线MAC地址")
-    ip_address = Column(String(15), nullable=False, comment="设备IP地址")
+    device_type = Column(String(10), default="", comment="设备类型: 1=小周天 2=大周天 3=周天 4=智瞳")
+    wireless_mac = Column(String(17), nullable=True, default=None, comment="无线MAC地址")
+    ip_address = Column(String(45), nullable=True, default=None, comment="设备IP地址")
     status = Column(SAEnum("normal", "fault", "pending"), nullable=False, default="pending", comment="设备状态")
     fault_reason = Column(Text, comment="故障原因/现象")
     fault_disposition = Column(
-        SAEnum("待返厂", "返厂中", "已返厂", "pending", "stored"), comment="故障处置"
+        SAEnum("待返厂", "返厂中", "已返厂", "pending", "stored", ""), nullable=True, default="", comment="故障处置"
     )
     return_date = Column(Date, comment="返厂日期")
     return_courier = Column(String(64), default="", comment="返厂快递公司")
@@ -217,6 +218,7 @@ class DeviceTest(Base):
             "id": self.id,
             "board_mac": self.board_mac,
             "device_code": self.device_code or "",
+            "device_type": self.device_type or "",
             "wireless_mac": self.wireless_mac,
             "ip_address": self.ip_address,
             "status": self.status,
@@ -463,25 +465,38 @@ IP_PATTERN = re.compile(
 )
 
 
+def normalize_mac(raw):
+    """将紧凑十六进制MAC（如 'AAD37A769C3F'）规范化为冒号分隔格式。
+    已是冒号/横杠分隔的格式原样返回。"""
+    if not raw:
+        return raw
+    s = raw.strip().upper()
+    if ':' in s or '-' in s:
+        return s
+    if len(s) == 12 and all(c in '0123456789ABCDEF' for c in s):
+        return ':'.join(s[i:i+2] for i in range(0, 12, 2))
+    return s
+
+
 def validate_device_data(data, is_update=False):
     errors = []
     if not is_update:
-        mac = (data.get("board_mac") or "").strip()
+        mac = normalize_mac(data.get("board_mac") or "")
         if not mac or not MAC_PATTERN.match(mac):
             errors.append("板卡MAC地址格式无效 (应为 XX:XX:XX:XX:XX:XX)")
-        wmac = (data.get("wireless_mac") or "").strip()
-        if not wmac or not MAC_PATTERN.match(wmac):
-            errors.append("无线MAC地址格式无效")
+        wmac = normalize_mac(data.get("wireless_mac") or "")
+        if wmac and not MAC_PATTERN.match(wmac):
+            errors.append("无线MAC地址格式无效 (应为 XX:XX:XX:XX:XX:XX)")
         ip = (data.get("ip_address") or "").strip()
-        if not ip or not IP_PATTERN.match(ip):
+        if ip and not IP_PATTERN.match(ip):
             errors.append("IP地址格式无效")
     else:
         if "board_mac" in data:
-            mac = data["board_mac"].strip()
+            mac = normalize_mac(data["board_mac"])
             if mac and not MAC_PATTERN.match(mac):
                 errors.append("板卡MAC地址格式无效")
         if "wireless_mac" in data:
-            wmac = data["wireless_mac"].strip()
+            wmac = normalize_mac(data["wireless_mac"])
             if wmac and not MAC_PATTERN.match(wmac):
                 errors.append("无线MAC地址格式无效")
         if "ip_address" in data:
@@ -1335,25 +1350,36 @@ def create_batch_device(batch_id):
             max_seq = db.query(func.max(DeviceTest.sort_order)).filter(DeviceTest.batch_id == batch_id).scalar()
             sort_order = (max_seq + 1) if max_seq is not None else 1
 
-        # 批次内唯一性检查：同批次中板卡MAC+无线MAC不可重复
-        board_mac = data["board_mac"].strip().upper()
-        wireless_mac = data["wireless_mac"].strip().upper()
-        existing = db.query(DeviceTest).filter(
-            DeviceTest.batch_id == batch_id,
-            DeviceTest.board_mac == board_mac,
-            DeviceTest.wireless_mac == wireless_mac,
-        ).first()
-        if existing:
-            return api_response(success=False, message="该板卡MAC+无线MAC组合在当前批次中已存在", code=409)
+        # 批次内唯一性检查：同批次中板卡MAC+无线MAC不可重复（仅当无线MAC非空时）
+        board_mac = normalize_mac(data["board_mac"])
+        wireless_mac_raw = data["wireless_mac"].strip()
+        wireless_mac = normalize_mac(wireless_mac_raw) if wireless_mac_raw else None
+        ip_addr = data["ip_address"].strip() or None
+        if wireless_mac:
+            existing = db.query(DeviceTest).filter(
+                DeviceTest.batch_id == batch_id,
+                DeviceTest.board_mac == board_mac,
+                DeviceTest.wireless_mac == wireless_mac,
+            ).first()
+            if existing:
+                return api_response(success=False, message="该板卡MAC+无线MAC组合在当前批次中已存在", code=409)
 
+        status_val = data.get("status", "normal")
+        fault_disposition_val = (data.get("fault_disposition") or 'pending') if status_val == "fault" else (data.get("fault_disposition") or '')
+        user_device_code = (data.get("device_code") or "").strip()
+        if user_device_code and len(user_device_code) == 8 and user_device_code.isalnum():
+            device_code_val = user_device_code.upper()
+        else:
+            device_code_val = board_mac.replace(":", "").replace("-", "").upper()
         device = DeviceTest(
             board_mac=board_mac,
-            device_code=board_mac.replace(":", "").replace("-", "").upper(),
+            device_code=device_code_val,
+            device_type=(data.get("device_type") or "").strip(),
             wireless_mac=wireless_mac,
-            ip_address=data["ip_address"].strip(),
-            status=data.get("status", "normal"),
+            ip_address=ip_addr,
+            status=status_val,
             fault_reason=(data.get("fault_reason") or "").strip() or None,
-            fault_disposition=data.get("fault_disposition") or None,
+            fault_disposition=fault_disposition_val,
             return_date=datetime.strptime(data["return_date"], "%Y-%m-%d").date() if data.get("return_date") else None,
             return_tracking=(data.get("return_tracking") or "").strip() or None,
             test_date=parse_iso_date(data.get("test_date")) or datetime.now(),
@@ -1371,9 +1397,10 @@ def create_batch_device(batch_id):
         db.commit()
         db.refresh(device)
         return api_response(data=device.to_dict(), message="设备添加成功", code=201)
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        return api_response(success=False, message="该板卡MAC+无线MAC组合已存在记录", code=409)
+        app.logger.error(f"IntegrityError for device {data}: {e}")
+        return api_response(success=False, message=f"数据库约束冲突: {e}", code=409)
     except Exception as e:
         db.rollback()
         return api_response(success=False, message=str(e), code=500)
@@ -1896,11 +1923,13 @@ def create_device():
             except (ValueError, TypeError):
                 batch_id = None
 
-        board_mac = data["board_mac"].strip().upper()
-        wireless_mac = data["wireless_mac"].strip().upper()
+        board_mac = normalize_mac(data["board_mac"])
+        wireless_mac_raw = data["wireless_mac"].strip()
+        wireless_mac = normalize_mac(wireless_mac_raw) if wireless_mac_raw else None
+        ip_addr = data["ip_address"].strip() or None
 
-        # 批次内唯一性检查
-        if batch_id is not None:
+        # 批次内唯一性检查（仅当无线MAC非空时）
+        if batch_id is not None and wireless_mac:
             existing = db.query(DeviceTest).filter(
                 DeviceTest.batch_id == batch_id,
                 DeviceTest.board_mac == board_mac,
@@ -1909,14 +1938,22 @@ def create_device():
             if existing:
                 return api_response(success=False, message="该板卡MAC+无线MAC组合在当前批次中已存在", code=409)
 
+        status_val = data.get("status", "normal")
+        fault_disposition_val = (data.get("fault_disposition") or 'pending') if status_val == "fault" else (data.get("fault_disposition") or '')
+        user_device_code = (data.get("device_code") or "").strip()
+        if user_device_code and len(user_device_code) == 8 and user_device_code.isalnum():
+            device_code_val = user_device_code.upper()
+        else:
+            device_code_val = board_mac.replace(":", "").replace("-", "").upper()
         device = DeviceTest(
             board_mac=board_mac,
-            device_code=board_mac.replace(":", "").replace("-", "").upper(),
+            device_code=device_code_val,
+            device_type=(data.get("device_type") or "").strip(),
             wireless_mac=wireless_mac,
-            ip_address=data["ip_address"].strip(),
-            status=data.get("status", "normal"),
+            ip_address=ip_addr,
+            status=status_val,
             fault_reason=(data.get("fault_reason") or "").strip() or None,
-            fault_disposition=data.get("fault_disposition") or None,
+            fault_disposition=fault_disposition_val,
             return_date=datetime.strptime(data["return_date"], "%Y-%m-%d").date() if data.get("return_date") else None,
             return_tracking=(data.get("return_tracking") or "").strip() or None,
             test_date=parse_iso_date(data.get("test_date")) or datetime.now(),
@@ -1935,9 +1972,10 @@ def create_device():
         db.commit()
         db.refresh(device)
         return api_response(data=device.to_dict(), message="设备记录创建成功", code=201)
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        return api_response(success=False, message="该板卡MAC+无线MAC组合已存在记录，请勿重复录入", code=409)
+        app.logger.error(f"IntegrityError for device board_mac={data.get('board_mac', '?')}: {e}")
+        return api_response(success=False, message=f"数据库约束冲突: {e}", code=409)
     except Exception as e:
         db.rollback()
         return api_response(success=False, message=str(e), code=500)
@@ -1959,7 +1997,7 @@ def update_device(device_id):
         if "status" in data:
             if data["status"] == "normal":
                 device.fault_reason = None
-                device.fault_disposition = None
+                device.fault_disposition = ''
                 device.return_date = None
                 device.return_tracking = None
                 device.fault_return_courier = None
@@ -1969,7 +2007,7 @@ def update_device(device_id):
             "board_mac", "wireless_mac", "ip_address", "status",
             "fault_reason", "fault_disposition", "return_date",
             "return_tracking", "fault_return_courier", "fault_return_tracking",
-            "operator", "notes", "test_date", "sort_order",
+            "operator", "notes", "test_date", "sort_order", "device_type",
         ]
 
         old_batch_id = device.batch_id
@@ -1981,12 +2019,20 @@ def update_device(device_id):
                     val = datetime.strptime(val, "%Y-%m-%d").date() if val else None
                 elif key == "test_date":
                     val = datetime.fromisoformat(val) if val else device.test_date
+                elif key in ("board_mac", "wireless_mac"):
+                    val = normalize_mac(val) if val else None
                 elif isinstance(val, str):
                     val = val.strip() or None
                 setattr(device, key, val)
 
-        # 如果修改了 board_mac，同步更新 device_code
-        if "board_mac" in data:
+        # 设备编号：用户填写8位则使用，否则从板卡MAC生成
+        if "device_code" in data:
+            custom_code = (data["device_code"] or "").strip()
+            if custom_code and len(custom_code) == 8 and custom_code.isalnum():
+                device.device_code = custom_code.upper()
+            elif "board_mac" in data:
+                device.device_code = device.board_mac.replace(":", "").replace("-", "").upper() if device.board_mac else ""
+        elif "board_mac" in data:
             device.device_code = device.board_mac.replace(":", "").replace("-", "").upper() if device.board_mac else ""
 
         # 支持更新 batch_id
@@ -2028,9 +2074,10 @@ def update_device(device_id):
         db.commit()
         db.refresh(device)
         return api_response(data=device.to_dict(), message="设备记录更新成功")
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        return api_response(success=False, message="MAC地址组合已存在", code=409)
+        app.logger.error(f"IntegrityError in update_device device_id={device_id}: {e}")
+        return api_response(success=False, message=f"数据库约束冲突: {e}", code=409)
     except Exception as e:
         db.rollback()
         return api_response(success=False, message=str(e), code=500)
@@ -2094,7 +2141,7 @@ def batch_create():
         rows = db.query(DeviceTest.board_mac, DeviceTest.wireless_mac).filter(
             DeviceTest.batch_id == batch_id
         ).all()
-        existing_macs = {(r[0].upper(), r[1].upper()) for r in rows}
+        existing_macs = {(r[0].upper(), (r[1] or "").upper()) for r in rows if r[1]}
     # 本次导入中已见过的 MAC 集合（防重复提交）
     seen_this_batch = set()
     try:
@@ -2103,23 +2150,28 @@ def batch_create():
             if errors:
                 results["failed"].append({"index": i, "mac": item.get("board_mac", "?"), "errors": errors})
                 continue
-            bm = item["board_mac"].strip().upper()
-            wm = item["wireless_mac"].strip().upper()
-            # 批次内唯一性检查
-            if batch_id is not None:
+            bm = normalize_mac(item["board_mac"])
+            wm_raw = item["wireless_mac"].strip()
+            wm = normalize_mac(wm_raw) if wm_raw else None
+            ip_raw = item["ip_address"].strip()
+            ip_addr = ip_raw if ip_raw else None
+            # 批次内唯一性检查（仅当 wireless_mac 非空时）
+            if batch_id is not None and wm:
                 key = (bm, wm)
                 if key in existing_macs or key in seen_this_batch:
                     results["failed"].append({"index": i, "mac": bm, "errors": ["该板卡MAC+无线MAC组合在当前批次中已存在"]})
                     continue
                 seen_this_batch.add(key)
             try:
+                item_status = item.get("status", "pending")
+                fault_disposition_val = (item.get("fault_disposition") or 'pending') if item_status == "fault" else (item.get("fault_disposition") or '')
                 device = DeviceTest(
                     board_mac=bm,
                     wireless_mac=wm,
-                    ip_address=item["ip_address"].strip(),
-                    status=item.get("status", "pending"),
+                    ip_address=ip_addr,
+                    status=item_status,
                     fault_reason=(item.get("fault_reason") or "").strip() or None,
-                    fault_disposition=item.get("fault_disposition") or None,
+                    fault_disposition=fault_disposition_val,
                     return_date=datetime.strptime(item["return_date"], "%Y-%m-%d").date() if item.get("return_date") else None,
                     return_tracking=(item.get("return_tracking") or "").strip() or None,
                     operator=(item.get("operator") or "").strip() or None,
@@ -2128,6 +2180,10 @@ def batch_create():
                 )
                 db.add(device)
                 results["created"] += 1
+            except IntegrityError as e:
+                db.rollback()
+                app.logger.error(f"IntegrityError for device item[{i}] board_mac={item.get('board_mac', '?')}: {e}")
+                results["failed"].append({"index": i, "mac": item.get("board_mac", "?"), "errors": [f"数据库约束冲突: {e}"]})
             except Exception as e:
                 results["failed"].append({"index": i, "mac": item.get("board_mac", "?"), "errors": [str(e)]})
 
@@ -2137,6 +2193,10 @@ def batch_create():
 
         db.commit()
         return api_response(data=results, message=f"批量录入完成: {results['created']}/{results['total']}", code=201)
+    except IntegrityError as e:
+        db.rollback()
+        app.logger.error(f"IntegrityError in batch_create commit: {e}")
+        return api_response(success=False, message=f"数据库约束冲突: {e}", code=409)
     except Exception as e:
         db.rollback()
         return api_response(success=False, message=str(e), code=500)
@@ -2154,7 +2214,7 @@ def batch_update_devices():
     ids = data.get("ids", [])
     field = data.get("field", "")
     value = data.get("value", None)
-    if not ids or field not in ("status", "fault_disposition", "operator"):
+    if not ids or field not in ("status", "fault_disposition", "operator", "device_type"):
         return api_response(success=False, message="参数无效", code=400)
     db = next(get_db())
     try:
@@ -2813,6 +2873,103 @@ def export_batch_excel(batch_id):
     finally:
         db.close()
 
+@app.route("/api/export/excel-custom", methods=["POST"])
+@login_required
+def export_excel_custom():
+    """自定义导出 Excel，支持列选择、表头重命名和去重。"""
+    data = request.get_json() or {}
+    devices_data = data.get("devices", [])
+    filter_duplicates = data.get("filter_duplicates", False)
+    selected_columns = data.get("columns", [])
+    header_overrides = data.get("header_overrides", {})
+
+    if not devices_data:
+        return api_response(success=False, message="没有可导出的数据", code=400)
+
+    if filter_duplicates:
+        seen = set()
+        unique_devices = []
+        for d in devices_data:
+            key = d.get("device_code", "") or d.get("board_mac", "")
+            if key and key not in seen:
+                seen.add(key)
+                unique_devices.append(d)
+        devices_data = unique_devices
+
+    DEVICE_TYPE_MAP = {"1": "小周天", "2": "大周天", "3": "周天", "4": "智瞳"}
+    column_config = {
+        "device_code": ("设备编号", lambda d: d.get("device_code", "")),
+        "device_type": ("设备类型", lambda d: d.get("device_type", "")),
+        "board_mac": ("板卡MAC", lambda d: d.get("board_mac", "")),
+        "wireless_mac": ("无线MAC", lambda d: d.get("wireless_mac", "")),
+        "ip_address": ("IP地址", lambda d: d.get("ip_address", "")),
+        "batch_no": ("所属批次", lambda d: d.get("batch_no", "")),
+        "status": ("状态", lambda d: {"normal": "正常", "fault": "故障", "pending": "待处理"}.get(d.get("status", ""), d.get("status", ""))),
+        "disposal_type": ("处置方式", lambda d: d.get("disposal_type", "") or d.get("fault_disposition", "")),
+        "fault_disposition": ("处置方式", lambda d: {"待返厂": "待返厂", "返厂中": "返厂中", "已返厂": "已返厂", "pending": "待处理", "stored": "已入库"}.get(d.get("fault_disposition", ""), "")),
+        "operator": ("操作员", lambda d: d.get("operator", "") or d.get("tester", "")),
+        "test_date": ("测试时间", lambda d: d.get("test_date", "")),
+        "fault_reason": ("故障原因", lambda d: d.get("fault_reason", "")),
+        "notes": ("备注", lambda d: d.get("notes", "") or d.get("remark", "")),
+    }
+
+    if not selected_columns:
+        selected_columns = ["board_mac", "wireless_mac", "ip_address", "batch_no", "status", "fault_disposition", "operator", "test_date", "fault_reason", "notes"]
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "设备列表"
+
+    header_font = Font(name="Helvetica Neue", bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    cell_align = Alignment(vertical="center", wrap_text=True)
+    thin_border = Border(
+        left=Side(style="thin", color="B0C4DE"),
+        right=Side(style="thin", color="B0C4DE"),
+        top=Side(style="thin", color="B0C4DE"),
+        bottom=Side(style="thin", color="B0C4DE"),
+    )
+
+    for col_idx, col_key in enumerate(selected_columns, 1):
+        default_header = column_config.get(col_key, (col_key, None))[0]
+        header_text = header_overrides.get(col_key, default_header)
+        cell = ws.cell(row=1, column=col_idx, value=header_text)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+
+    normal_fill = PatternFill(start_color="EAFAF1", end_color="EAFAF1", fill_type="solid")
+    fault_fill = PatternFill(start_color="FDEDEC", end_color="FDEDEC", fill_type="solid")
+
+    for row_idx, device in enumerate(devices_data, 2):
+        status_val = device.get("status", "")
+        row_fill = normal_fill if status_val in ("normal", "正常") else fault_fill
+        for col_idx, col_key in enumerate(selected_columns, 1):
+            _, extractor = column_config.get(col_key, (col_key, lambda d: ""))
+            value = extractor(device)
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.alignment = cell_align
+            cell.border = thin_border
+            cell.fill = row_fill
+
+    for col_idx, col_key in enumerate(selected_columns, 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = 16
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"设备列表_{date.today().isoformat()}.xlsx",
+    )
+
 @app.route("/api/export/markdown", methods=["GET"])
 @login_required
 def export_markdown():
@@ -3129,7 +3286,7 @@ def download_template():
     ws.title = "批量导入模板"
 
     headers = [
-        "板卡MAC", "无线MAC", "IP地址", "状态",
+        "设备编号", "物理MAC", "无线MAC", "IP地址", "设备类型", "状态",
         "故障原因/现象", "处置方式",
         "测试时间", "操作员", "备注",
     ]
@@ -3152,8 +3309,8 @@ def download_template():
         cell.border = thin_border
 
     example_row = [
-        "00:1A:2B:3C:4D:5E", "00:1A:2B:3C:4D:5F", "192.168.1.100", "正常",
-        "", "", "", "",
+        "留空自动生成", "00:1A:2B:3C:4D:5E", "00:1A:2B:3C:4D:5F", "192.168.1.100", "1=小周天/2=大周天/3=周天/4=智瞳", "正常",
+        "", "",
         datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "操作员姓名", "",
     ]
     for col, val in enumerate(example_row, 1):
@@ -3161,7 +3318,7 @@ def download_template():
         cell.border = thin_border
         cell.alignment = Alignment(vertical="center")
 
-    col_widths = [18, 18, 16, 8, 30, 12, 14, 18, 18, 12, 20]
+    col_widths = [14, 18, 18, 16, 24, 8, 30, 12, 20, 14, 18]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
@@ -3193,7 +3350,7 @@ def report_fault(device_id):
 
         device.status = "fault"
         device.fault_reason = (data.get("fault_reason") or "").strip() or None
-        device.fault_disposition = data.get("fault_disposition") or None
+        device.fault_disposition = data.get("fault_disposition") or 'pending'
 
         return_date = data.get("return_date")
         device.return_date = datetime.strptime(return_date, "%Y-%m-%d").date() if return_date else None
@@ -4091,7 +4248,7 @@ if __name__ == "__main__":
     finally:
         db.close()
 
-    PORT = int(os.getenv("PORT", "8100"))
+    PORT = int(os.getenv("APP_PORT", os.getenv("PORT", "8000")))
 
     print("=" * 60)
     print("  硬件测试记录系统 - Hardware Test Record System")

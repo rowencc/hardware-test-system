@@ -3,9 +3,14 @@
 # 硬件测试记录系统 — 一键部署脚本 v2
 # 支持: CentOS 8+ / Ubuntu 22.04+ / Debian 12+ / Alibaba Cloud Linux 3+
 # 用法:
-#   sudo bash deploy.sh                          # 默认 /www/wwwroot/hardware-test-system
-#   sudo bash deploy.sh /opt/hardware-test-system # 自定义安装目录
-#   PORT=8100 sudo bash deploy.sh                # 自定义端口
+#   sudo bash deploy.sh                              # 默认 /www/wwwroot/hardware-test-system
+#   sudo bash deploy.sh /opt/hardware-test-system     # 自定义安装目录
+#   sudo bash deploy.sh --mysql-password=yourpass     # 传入 MySQL 密码
+#   sudo bash deploy.sh -p yourpass                   # 传入 MySQL 密码(短选项)
+#   PORT=8100 sudo bash deploy.sh                     # 自定义端口
+#   sudo bash deploy.sh restart                       # 重启服务
+#   sudo bash deploy.sh status                        # 查看服务状态
+#   sudo bash deploy.sh stop                          # 停止服务
 # =============================================================================
 
 set -e
@@ -13,9 +18,44 @@ set -e
 # ---- 路径解析 ----
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-INSTALL_DIR="${1:-/www/wwwroot/hardware-test-system}"
-BACKEND_PORT="${PORT:-8100}"
 SCRIPT_NAME="$(basename "$0")"
+
+# ---- 参数解析 ----
+MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-}"
+INSTALL_DIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --mysql-password=*)
+            MYSQL_ROOT_PASSWORD="${1#*=}"
+            shift
+            ;;
+        --mysql-password|-p)
+            MYSQL_ROOT_PASSWORD="$2"
+            shift 2
+            ;;
+        restart|status|stop)
+            if command -v systemctl &>/dev/null && systemctl is-enabled hardware-test.service &>/dev/null 2>&1; then
+                systemctl "$1" hardware-test.service
+                exit $?
+            else
+                echo "systemd 服务未安装或未启用，无法执行 $1 命令"
+                exit 1
+            fi
+            ;;
+        -*)
+            echo "未知参数: $1"
+            echo "用法: sudo bash $SCRIPT_NAME [安装目录] [--mysql-password=密码]"
+            echo "管理命令: sudo bash $SCRIPT_NAME restart|status|stop"
+            exit 1
+            ;;
+        *)
+            INSTALL_DIR="$1"
+            shift
+            ;;
+    esac
+done
+INSTALL_DIR="${INSTALL_DIR:-/www/wwwroot/hardware-test-system}"
+BACKEND_PORT="${PORT:-8100}"
 
 # ---- 颜色 ----
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'
@@ -161,11 +201,19 @@ step "2/7  部署项目文件"
 
 if [ "$PROJECT_DIR" != "$INSTALL_DIR" ]; then
     mkdir -p "$INSTALL_DIR"
-    rsync -a --exclude='venv/' --exclude='__pycache__/' --exclude='*.pyc' \
-        --exclude='.git/' --exclude='node_modules/' \
-        "$PROJECT_DIR/" "$INSTALL_DIR/"
+    if command -v rsync &>/dev/null; then
+        rsync -a --exclude='venv/' --exclude='__pycache__/' --exclude='*.pyc' \
+            --exclude='.git/' --exclude='node_modules/' \
+            "$PROJECT_DIR/" "$INSTALL_DIR/"
+        ok "项目已同步到 $INSTALL_DIR (rsync)"
+    else
+        warn "rsync 不可用，降级为 cp -r"
+        shopt -s dotglob
+        cp -r "$PROJECT_DIR"/* "$INSTALL_DIR/" 2>/dev/null || true
+        shopt -u dotglob
+        ok "项目已同步到 $INSTALL_DIR (cp)"
+    fi
     PROJECT_DIR="$INSTALL_DIR"
-    ok "项目已同步到 $INSTALL_DIR"
 else
     ok "项目已在目标路径"
 fi
