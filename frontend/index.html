@@ -1418,6 +1418,30 @@
         #exportScopeHint { line-height: 1.5; }
         #exportScopeHint strong { font-size: 14px; }
 
+        /* Flow tracking styles */
+        .flow-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 10px;
+            font-size: 10px; font-weight: 600; cursor: default;
+            position: relative; white-space: nowrap;
+        }
+        .flow-in-stock { background: rgba(16,185,129,.12); color: #34d399; }
+        .flow-outgoing { background: rgba(249,115,22,.12); color: #fb923c; animation: flow-pulse 2s infinite; }
+        .flow-overdue { background: rgba(239,68,68,.12); color: #f87171; animation: flow-pulse 1.5s infinite; }
+        @keyframes flow-pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+        .flow-tooltip {
+            display: none; position: absolute; left: 0; top: 100%; z-index: 1000;
+            background: var(--color-surface-2); border: 1px solid var(--color-border);
+            border-radius: 8px; padding: 12px; min-width: 260px;
+            box-shadow: var(--shadow-lg); font-size: 12px; margin-top: 6px;
+            color: var(--color-text-2); line-height: 1.8;
+        }
+        .flow-badge:hover .flow-tooltip { display: block; }
+        .flow-tooltip strong { color: var(--color-text-1); }
+        .flow-stat-card { text-align: left; padding: 12px 16px; }
+        .flow-stat-card .stat-value { font-size: 26px; font-weight: 800; font-family: var(--font-mono); }
+        .flow-stat-card .stat-label { font-size: 11px; color: var(--color-text-3); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+
         /* ============================================================
            SORTABLE TABLE HEADERS
            ============================================================ */
@@ -1644,12 +1668,178 @@
         }
 
         /* ============================================================
-           RESPONSIVE
+           RESPONSIVE — Mobile First
            ============================================================ */
-        @media (max-width: 1024px) { .app-container { grid-template-columns: 1fr; } .sidebar { display: none; } }
-        @media (max-width: 768px) { .form-row { grid-template-columns: 1fr; } .stats-grid { grid-template-columns: 1fr; } .kpi-grid { grid-template-columns: 1fr; } }
-        @media (max-width: 520px) { #addDeviceModal .form-row { grid-template-columns: 1fr; } #addDeviceModal .modal-card { margin: 8px; } }
-        @media (max-width: 1200px) { .chart-row { grid-template-columns: 1fr; } }
+
+        /* Mobile menu toggle button */
+        .mobile-menu-toggle {
+            display: none; position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+            width: 52px; height: 52px; border-radius: 50%; border: none;
+            background: var(--color-primary); color: #fff; font-size: 20px;
+            box-shadow: 0 4px 16px rgba(0,212,255,.4); cursor: pointer;
+            transition: transform .2s;
+        }
+        .mobile-menu-toggle:active { transform: scale(.9); }
+
+        /* Mobile sidebar overlay */
+        .sidebar-overlay {
+            display: none; position: fixed; inset: 0; z-index: 999;
+            background: rgba(0,0,0,.5); backdrop-filter: blur(4px);
+        }
+        .sidebar-overlay.active { display: block; }
+
+        /* Desktop: ≥1024px */
+        @media (min-width: 1024px) {
+            .mobile-menu-toggle { display: none !important; }
+            .sidebar-overlay { display: none !important; }
+        }
+
+        /* Tablet: 768px–1023px */
+        @media (max-width: 1023px) {
+            .app-container { grid-template-columns: 1fr; }
+            .sidebar {
+                position: fixed; left: 0; top: 0; bottom: 0; z-index: 1000;
+                width: 260px; transform: translateX(-100%);
+                transition: transform .3s var(--ease-out);
+                box-shadow: 4px 0 24px rgba(0,0,0,.3);
+            }
+            .sidebar.open { transform: translateX(0); }
+            .mobile-menu-toggle { display: flex; align-items: center; justify-content: center; }
+            .app-header { padding: 10px 16px; }
+            .header-controls { flex-wrap: wrap; gap: 8px; }
+            .header-controls .search-box { width: 100%; }
+            .header-controls .filters { width: 100%; }
+            .header-controls .filters select { width: 100%; }
+        }
+
+        /* Mobile: <768px */
+        @media (max-width: 767px) {
+            body { font-size: 13px; }
+
+            /* Header: compact layout */
+            .app-header {
+                padding: 4px 8px !important;
+                height: 44px !important;
+                flex-wrap: nowrap !important;
+            }
+            .logo { gap: 6px !important; }
+            .logo-icon { width: 26px !important; height: 26px !important; font-size: 12px !important; }
+            .logo-text h1 { font-size: 13px !important; }
+            .logo-text .subtitle { display: none !important; }
+            .header-actions { gap: 4px !important; flex-shrink: 0; }
+            .header-actions .btn { padding: 4px 8px !important; font-size: 10px !important; white-space: nowrap; }
+            .header-actions .btn i { margin-right: 2px; }
+            .user-info { font-size: 10px !important; }
+            .operator-name { font-size: 10px !important; }
+            .header-controls { flex-direction: column; gap: 6px; padding: 6px 10px; }
+            .header-controls .search-box { width: 100%; }
+            .header-controls .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
+            .header-controls .filters select { width: 100%; font-size: 11px; padding: 6px 8px; }
+
+            /* Content area */
+            .content-section { padding: 8px 10px !important; }
+
+            /* Stats grid: 2 columns, compact */
+            .stats-grid { grid-template-columns: 1fr 1fr !important; gap: 6px !important; }
+            .stat-card {
+                padding: 8px 10px !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+            }
+            .stat-card .stat-value { font-size: 20px !important; line-height: 1; }
+            .stat-card .stat-label { font-size: 10px !important; margin-top: 2px; }
+            .stat-icon { width: 32px !important; height: 32px !important; font-size: 14px !important; flex-shrink: 0; }
+
+            /* KPI grid */
+            .kpi-grid { grid-template-columns: 1fr 1fr !important; gap: 6px !important; }
+
+            /* Card */
+            .card { margin-bottom: 10px; }
+            .card-header { padding: 10px 12px !important; flex-wrap: wrap; gap: 6px; }
+            .card-header .card-title { font-size: 14px !important; }
+            .card-body { padding: 10px 12px !important; }
+
+            /* Tables: horizontal scroll */
+            .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -10px; padding: 0 10px; }
+            .data-table { min-width: 700px; font-size: 11px; }
+            .data-table th, .data-table td { padding: 5px 6px; white-space: nowrap; }
+            .data-table .actions-cell { white-space: nowrap; }
+            .data-table .actions-cell .btn { padding: 4px 6px; font-size: 10px; }
+            .data-table code { font-size: 10px; }
+
+            /* Batch toolbar */
+            .batch-toolbar { flex-wrap: wrap; gap: 4px; padding: 6px 10px; }
+            .batch-toolbar .btn { font-size: 11px; padding: 5px 8px; }
+
+            /* Form rows: single column */
+            .form-row { grid-template-columns: 1fr !important; gap: 8px !important; }
+            .form-group { margin-bottom: 8px; }
+            .form-label { font-size: 11px; margin-bottom: 3px; }
+            .form-control { font-size: 13px; padding: 7px 10px; }
+
+            /* Modals: full screen on mobile */
+            .modal { padding: 0 !important; }
+            .modal-content, .modal-card {
+                width: 100% !important; max-width: 100% !important;
+                height: 100vh; max-height: 100vh;
+                border-radius: 0 !important; margin: 0 !important;
+                display: flex; flex-direction: column;
+            }
+            .modal-body { flex: 1; overflow-y: auto; padding: 12px 14px !important; }
+            .modal-footer { padding: 10px 14px !important; flex-shrink: 0; display: flex; gap: 8px; }
+            .modal-footer .btn { flex: 1; }
+            .modal-header { padding: 10px 14px !important; flex-shrink: 0; }
+            .modal-header h3 { font-size: 15px; }
+
+            /* Pagination */
+            .pagination-bar { flex-wrap: wrap; justify-content: center; gap: 3px; padding: 6px 10px; }
+            .pagination-bar .btn { min-width: 32px; padding: 5px 8px; font-size: 11px; }
+
+            /* Chart */
+            .chart-row { grid-template-columns: 1fr !important; }
+            .chart-container canvas { max-height: 180px; }
+
+            /* Buttons: larger touch targets */
+            .btn { min-height: 34px; }
+            .btn-sm { min-height: 30px; font-size: 11px; }
+            .btn-xs { min-height: 26px; font-size: 10px; padding: 3px 6px; }
+
+            /* Export modal */
+            #exportModal .column-item { flex-wrap: wrap; }
+            #exportModal .column-check { min-width: 70px; }
+            #exportModal .header-input { min-width: 100%; margin-top: 4px; }
+
+            /* Pagination controls */
+            .pagination-controls { flex-wrap: wrap; gap: 3px; }
+
+            /* Login overlay */
+            .login-container { padding: 12px; }
+            .login-card { padding: 20px 16px; }
+
+            /* Tab nav */
+            .tab-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .tab-btn { white-space: nowrap; padding: 8px 12px; font-size: 12px; }
+
+            /* Batch detail */
+            .batch-stat-row { grid-template-columns: 1fr 1fr !important; }
+
+            /* Flow page */
+            #flow .card-body { padding: 8px 10px !important; }
+            #flow .stat-card { padding: 6px 8px !important; }
+            #flow .stat-value { font-size: 18px !important; }
+            #flow .stat-label { font-size: 9px !important; }
+        }
+
+        /* Small mobile: <480px */
+        @media (max-width: 479px) {
+            .stats-grid { grid-template-columns: 1fr !important; }
+            .kpi-grid { grid-template-columns: 1fr !important; }
+            .header-controls .filters { grid-template-columns: 1fr; }
+            .data-table { min-width: 600px; }
+            .batch-toolbar { flex-direction: column; }
+            .batch-toolbar .btn { width: 100%; justify-content: center; }
+        }
 
         /* ============================================================
            LIGHT THEME — hardcoded-color overrides
@@ -2680,8 +2870,14 @@
             </div>
         </header>
 
+        <!-- Mobile menu toggle -->
+        <button class="mobile-menu-toggle" id="mobileMenuToggle" onclick="toggleMobileMenu()">
+            <i class="fas fa-bars"></i>
+        </button>
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleMobileMenu()"></div>
+
         <!-- 侧边栏 -->
-        <nav class="sidebar">
+        <nav class="sidebar" id="appSidebar">
             <div class="nav-section">
                 <h3>主要功能</h3>
                 <button class="nav-item active" data-section="dashboard">
@@ -2702,6 +2898,9 @@
                 </button>
                 <button class="nav-item" data-section="returns">
                     <i class="fas fa-truck-moving"></i> 返厂跟踪
+                </button>
+                <button class="nav-item" data-section="flow">
+                    <i class="fas fa-route"></i> 设备流转
                 </button>
             </div>
             
@@ -2776,6 +2975,16 @@
                             <div class="stat-content">
                                 <div class="stat-value" id="pendingDevices">0</div>
                                 <div class="stat-label">待测设备</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card" onclick="document.querySelector('[data-section=flow]').click()" style="cursor:pointer;">
+                            <div class="stat-icon" style="background:rgba(249,115,22,.15);color:#fb923c;">
+                                <i class="fas fa-route"></i>
+                            </div>
+                            <div class="stat-content">
+                                <div class="stat-value" id="dashFlowOutgoing">0</div>
+                                <div class="stat-label">设备外出</div>
                             </div>
                         </div>
 
@@ -3056,6 +3265,14 @@
                                     <option value="stored">已入库</option>
                                     <option value="pending">待处理</option>
                                 </select>
+                                <select id="flowFilter" class="form-control">
+                                    <option value="">所有流转</option>
+                                    <option value="在库">在库</option>
+                                    <option value="outgoing">外出中</option>
+                                    <option value="外出参展">外出参展</option>
+                                    <option value="客户演示">客户演示</option>
+                                    <option value="外借">外借</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -3073,6 +3290,7 @@
                                     <th class="sortable" data-sort="id" data-dir="desc">ID <span class="sort-arrow">▼</span></th>
                                     <th>设备编号</th>
                                     <th>设备类型</th>
+                                    <th>流转</th>
                                     <th style="display:none;">物理MAC</th>
                                     <th>无线MAC</th>
                                     <th>IP地址</th>
@@ -3235,7 +3453,74 @@
                     <div id="returnRecordsPagination" class="pagination-bar" style="display:none;"></div>
                 </div>
             </section>
-            
+
+            <!-- 设备流转管理 -->
+            <section id="flow" class="content-section">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title"><i class="fas fa-route"></i> 设备流转管理</h2>
+                    </div>
+                    <div class="card-body">
+                        <!-- Flow statistics -->
+                        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+                            <div class="stat-card flow-stat-card" style="border-left:3px solid var(--color-success);">
+                                <div class="stat-value" style="color:var(--color-success);" id="flowStatInStock">0</div>
+                                <div class="stat-label">在库</div>
+                            </div>
+                            <div class="stat-card flow-stat-card" style="border-left:3px solid var(--color-warning);">
+                                <div class="stat-value" style="color:var(--color-warning);" id="flowStatOutgoing">0</div>
+                                <div class="stat-label">外出中</div>
+                            </div>
+                            <div class="stat-card flow-stat-card" style="border-left:3px solid var(--color-error);">
+                                <div class="stat-value" style="color:var(--color-error);" id="flowStatOverdue">0</div>
+                                <div class="stat-label">超期未还</div>
+                            </div>
+                            <div class="stat-card flow-stat-card" style="border-left:3px solid var(--color-info);">
+                                <div class="stat-value" style="color:var(--color-info);" id="flowStatReturned">0</div>
+                                <div class="stat-label">本月返还</div>
+                            </div>
+                        </div>
+
+                        <!-- Filters -->
+                        <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+                            <select id="flowListStatusFilter" class="form-control" style="width:140px;min-width:120px;">
+                                <option value="outgoing">外出中</option>
+                                <option value="">所有状态</option>
+                                <option value="外出参展">外出参展</option>
+                                <option value="客户演示">客户演示</option>
+                                <option value="外借">外借</option>
+                            </select>
+                            <input type="text" id="flowListSearch" class="form-control" placeholder="搜索设备编号/目的地..." style="width:220px;min-width:150px;flex:1;">
+                            <button class="btn btn-sm btn-primary" onclick="showFlowMarkOutModal()"><i class="fas fa-paper-plane"></i> 标记外出</button>
+                            <button class="btn btn-sm btn-secondary" onclick="batchFlowReturn()"><i class="fas fa-undo"></i> 批量返还</button>
+                        </div>
+
+                        <!-- Flow table -->
+                        <div class="table-container">
+                            <table class="data-table" id="flowTable">
+                                <thead>
+                                    <tr>
+                                        <th class="col-check"><input type="checkbox" id="flowSelectAll" onchange="toggleFlowSelectAll(this)"></th>
+                                        <th>设备编号</th>
+                                        <th>设备类型</th>
+                                        <th>流转状态</th>
+                                        <th>用途</th>
+                                        <th>目的地</th>
+                                        <th>联系人</th>
+                                        <th>外出日期</th>
+                                        <th>预计返还</th>
+                                        <th>状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="flowTableBody"></tbody>
+                            </table>
+                        </div>
+                        <div id="flowPagination" class="pagination-bar" style="display:none;"></div>
+                    </div>
+                </div>
+            </section>
+
             <section id="settings" class="content-section">
                 <div class="card">
                     <div class="card-header">
@@ -3588,7 +3873,7 @@
                         <span class="selected-count" id="batchSelectedCount">已选 0 台设备</span>
                         <button class="btn btn-sm btn-secondary" onclick="showBatchModifyModal()"><i class="fas fa-edit"></i> 批量修改</button>
                         <button class="btn btn-sm btn-error" onclick="batchDeleteSelected()"><i class="fas fa-trash"></i> 删除选中</button>
-                        <button class="btn btn-sm btn-primary" onclick="exportBatchDevicesSelected()"><i class="fas fa-file-export"></i> 导出选中</button>
+                        <button class="btn btn-sm btn-primary" onclick="showExportModal('selected')"><i class="fas fa-file-export"></i> 导出选中</button>
                     </div>
                     <div class="table-container">
                         <table class="data-table" id="batchDevicesTable">
@@ -4054,6 +4339,10 @@
                                 case 'returns':
                                     loadReturnRecords(1);
                                     break;
+                                case 'flow':
+                                    loadFlowStats();
+                                    loadFlowList(1);
+                                    break;
                                 case 'users':
                                     if (currentUser && currentUser.role === 'admin') loadUsers();
                                     break;
@@ -4206,6 +4495,7 @@
             });
             document.getElementById('statusFilter').addEventListener('change', loadDevices);
             document.getElementById('dispositionFilter').addEventListener('change', loadDevices);
+            document.getElementById('flowFilter').addEventListener('change', loadDevices);
             
             // 导出按钮
             document.getElementById('exportExcel').addEventListener('click', function() {
@@ -4439,6 +4729,12 @@
                 document.getElementById('faultDevices').textContent = stats.fault;
                 document.getElementById('pendingDevices').textContent = stats.pending;
                 document.getElementById('untestedBoards').textContent = stats.untested;
+
+                // Load flow stats for dashboard
+                try {
+                    const flowData = await apiCall('/statistics/flow');
+                    document.getElementById('dashFlowOutgoing').textContent = flowData.outgoing || 0;
+                } catch (e) {}
                 // 良品率 = normal / total_expected * 100 (与批次列表规则一致)
                 const yieldRate = stats.total_expected > 0 ? ((stats.normal / stats.total_expected) * 100).toFixed(1) : '100';
                 document.getElementById('yieldRate').textContent = yieldRate + '%';
@@ -4802,11 +5098,13 @@
                 const search = document.getElementById('searchInput').value;
                 const status = document.getElementById('statusFilter').value;
                 const disposition = document.getElementById('dispositionFilter').value;
-                
+                const flowStatus = document.getElementById('flowFilter').value;
+
                 let endpoint = `/devices?page=${page}&per_page=${devicesPerPage}&sort_by=${devicesSortBy}&sort_order=${devicesSortOrder}`;
                 if (search) endpoint += `&search=${encodeURIComponent(search)}`;
                 if (status) endpoint += `&status=${status}`;
                 if (disposition) endpoint += `&disposition=${disposition}`;
+                if (flowStatus) endpoint += `&flow_status=${flowStatus}`;
                 
                 const data = await apiCall(endpoint);
                 devicesCache = data.items;
@@ -4895,6 +5193,23 @@
                 const DEVICE_TYPE_LABELS = {'1':'小周天','2':'大周天','3':'周天','4':'智瞳'};
                 const deviceTypeText = DEVICE_TYPE_LABELS[device.device_type] || '--';
 
+                // Flow status rendering
+                const FLOW_ICONS = {'在库':'📦','外出参展':'🎪','客户演示':'💼','外借':'🤝'};
+                const flowStatus = device.flow_status || '在库';
+                const flowIcon = FLOW_ICONS[flowStatus] || '📦';
+                const flowClass = device.flow_overdue ? 'flow-overdue' : (flowStatus === '在库' ? 'flow-in-stock' : 'flow-outgoing');
+                const flowTooltip = flowStatus !== '在库' ? `
+                    <div class="flow-tooltip">
+                        <div><strong>状态：</strong>${flowIcon} ${flowStatus}</div>
+                        ${device.flow_purpose ? `<div><strong>用途：</strong>${device.flow_purpose}</div>` : ''}
+                        ${device.flow_destination ? `<div><strong>目的地：</strong>${device.flow_destination}</div>` : ''}
+                        ${device.flow_contact ? `<div><strong>联系人：</strong>${device.flow_contact}</div>` : ''}
+                        ${device.flow_phone ? `<div><strong>电话：</strong>${device.flow_phone}</div>` : ''}
+                        ${device.flow_out_date ? `<div><strong>外出日期：</strong>${device.flow_out_date}</div>` : ''}
+                        ${device.flow_expected_return ? `<div><strong>预计返还：</strong>${device.flow_expected_return}</div>` : ''}
+                        ${device.flow_notes ? `<div><strong>备注：</strong>${device.flow_notes}</div>` : ''}
+                    </div>` : '';
+
                 const row = document.createElement('tr');
                 row.dataset.deviceId = device.id;
                 row.innerHTML = `
@@ -4902,6 +5217,7 @@
                     <td>${device.id}</td>
                     <td><code>${device.device_code || '--'}</code></td>
                     <td>${deviceTypeText}</td>
+                    <td><span class="flow-badge ${flowClass}">${flowIcon} ${flowStatus}${device.flow_overdue ? ' ⚠' : ''}</span>${flowTooltip}</td>
                     <td style="display:none;"><code>${device.board_mac}</code></td>
                     <td><code>${device.wireless_mac}</code></td>
                     <td><code>${device.ip_address}</code></td>
@@ -4915,8 +5231,11 @@
                         <button class="btn btn-sm btn-warning toggle-status" data-id="${device.id}" data-status="${device.status}" title="${device.status === 'normal' ? '标记故障' : '恢复正常'}">
                             <i class="fas fa-exchange-alt"></i>
                         </button>
-                        <button class="btn btn-sm btn-secondary edit-device" data-id="${device.id}" title="编辑">
+                        <button class="btn btn-sm btn-info edit-device" data-id="${device.id}" title="编辑">
                             <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm ${device.flow_overdue ? 'btn-error' : (device.flow_status && device.flow_status !== '在库' ? 'btn-warning' : 'btn-success')} flow-edit-btn" data-id="${device.id}" title="流转信息">
+                            <i class="fas fa-route"></i>
                         </button>
                         <button class="btn btn-sm btn-error delete-device-row" data-id="${device.id}" title="删除">
                             <i class="fas fa-trash"></i>
@@ -4936,6 +5255,11 @@
             document.querySelectorAll('.edit-device').forEach(btn => {
                 btn.addEventListener('click', function() {
                     editDevice(this.dataset.id);
+                });
+            });
+            document.querySelectorAll('.flow-edit-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    openFlowEditModal(this.dataset.id);
                 });
             });
             
@@ -6416,6 +6740,11 @@
             { key: 'test_date', label: '测试时间', default: false },
             { key: 'operator', label: '操作员', default: false },
             { key: 'notes', label: '备注', default: true },
+            { key: 'flow_status', label: '流转状态', default: false },
+            { key: 'flow_purpose', label: '流转用途', default: false },
+            { key: 'flow_destination', label: '目的地', default: false },
+            { key: 'flow_out_date', label: '外出日期', default: false },
+            { key: 'flow_expected_return', label: '预计返还', default: false },
         ];
 
         // 渲染导出列选项
@@ -9645,6 +9974,288 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                 });
             }
         })();
+
+        // ============ Mobile Menu ============
+        function toggleMobileMenu() {
+            const sidebar = document.getElementById('appSidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+        }
+
+        // Close mobile menu when nav item clicked
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.nav-item') && window.innerWidth < 1024) {
+                const sidebar = document.getElementById('appSidebar');
+                const overlay = document.getElementById('sidebarOverlay');
+                if (sidebar.classList.contains('open')) {
+                    sidebar.classList.remove('open');
+                    overlay.classList.remove('active');
+                }
+            }
+        });
+
+        // ============ 设备流转管理 ============
+
+        let flowListPage = 1;
+        const flowPerPage = 20;
+
+        async function loadFlowStats() {
+            try {
+                const data = await apiCall('/statistics/flow');
+                document.getElementById('flowStatInStock').textContent = data.in_stock || 0;
+                document.getElementById('flowStatOutgoing').textContent = data.outgoing || 0;
+                document.getElementById('flowStatOverdue').textContent = data.overdue || 0;
+                document.getElementById('flowStatReturned').textContent = data.returned_this_month || 0;
+            } catch (e) { console.error('加载流转统计失败:', e); }
+        }
+
+        async function loadFlowList(page = 1) {
+            flowListPage = page;
+            const statusFilter = document.getElementById('flowListStatusFilter').value;
+            const search = document.getElementById('flowListSearch').value.trim();
+            let endpoint = `/devices?page=${page}&per_page=${flowPerPage}&sort_by=test_date&sort_order=desc`;
+            if (statusFilter) endpoint += `&flow_status=${statusFilter}`;
+            if (search) endpoint += `&search=${encodeURIComponent(search)}`;
+            try {
+                const data = await apiCall(endpoint);
+                renderFlowTable(data.items || []);
+                renderFlowPagination(data);
+            } catch (e) { showNotification('加载流转列表失败', 'error'); }
+        }
+
+        function renderFlowTable(devices) {
+            const tbody = document.getElementById('flowTableBody');
+            const FLOW_ICONS = {'在库':'📦','外出参展':'🎪','客户演示':'💼','外借':'🤝'};
+            const DEVICE_TYPE_LABELS = {'1':'小周天','2':'大周天','3':'周天','4':'智瞳'};
+            if (!devices.length) {
+                tbody.innerHTML = `<tr><td colspan="11" class="empty-table"><i class="fas fa-route"></i><p>暂无流转记录</p></td></tr>`;
+                return;
+            }
+            tbody.innerHTML = devices.map(d => {
+                const flowStatus = d.flow_status || '在库';
+                const icon = FLOW_ICONS[flowStatus] || '📦';
+                const typeText = DEVICE_TYPE_LABELS[d.device_type] || '--';
+                const isOverdue = d.flow_overdue;
+                const statusBadge = isOverdue
+                    ? `<span class="flow-badge flow-overdue">⚠ 超期</span>`
+                    : `<span class="flow-badge flow-outgoing">${icon} ${flowStatus}</span>`;
+                return `<tr style="${isOverdue ? 'background:rgba(239,68,68,.05);' : ''}">
+                    <td class="col-check"><input type="checkbox" class="row-checkbox flow-check" data-id="${d.id}" data-table="flow-table"></td>
+                    <td><code>${d.device_code || '--'}</code></td>
+                    <td>${typeText}</td>
+                    <td>${statusBadge}</td>
+                    <td>${d.flow_purpose || '--'}</td>
+                    <td>${d.flow_destination || '--'}</td>
+                    <td>${d.flow_contact || '--'}</td>
+                    <td>${d.flow_out_date || '--'}</td>
+                    <td>${d.flow_expected_return || '--'}</td>
+                    <td>${isOverdue ? '<span style="color:var(--color-error);font-weight:600;">⚠ 超期</span>' : '<span style="color:var(--color-success);">正常</span>'}</td>
+                    <td class="actions-cell">
+                        <button class="btn btn-xs btn-primary" onclick="showFlowReturnConfirm(${d.id})" title="标记返还"><i class="fas fa-undo"></i></button>
+                        <button class="btn btn-xs btn-warning" onclick="editDevice(${d.id})" title="编辑"><i class="fas fa-edit"></i></button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function renderFlowPagination(data) {
+            const el = document.getElementById('flowPagination');
+            if (data.total_pages <= 1) { el.style.display = 'none'; return; }
+            el.style.display = 'flex';
+            el.innerHTML = '';
+            for (let i = 1; i <= data.total_pages; i++) {
+                const btn = document.createElement('button');
+                btn.className = `btn btn-sm ${i === flowListPage ? 'btn-primary' : 'btn-secondary'}`;
+                btn.textContent = i;
+                btn.onclick = () => loadFlowList(i);
+                el.appendChild(btn);
+            }
+        }
+
+        function toggleFlowSelectAll(el) {
+            document.querySelectorAll('.flow-check').forEach(cb => cb.checked = el.checked);
+        }
+
+        function showFlowMarkOutModal() {
+            const old = document.getElementById('flowMarkOutModal');
+            if (old) old.remove();
+            const modal = document.createElement('div');
+            modal.id = 'flowMarkOutModal';
+            modal.className = 'modal active';
+            modal.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('flowMarkOutModal').remove()"></div>
+                <div class="modal-card" style="max-width:480px;">
+                    <div class="modal-header"><h3><i class="fas fa-paper-plane"></i> 标记设备外出</h3>
+                        <button class="modal-close" onclick="document.getElementById('flowMarkOutModal').remove()">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding:16px 20px;">
+                        <div class="form-group"><label class="form-label">设备编号 <span class="required">*</span></label>
+                            <input type="text" id="flowMarkDeviceCode" class="form-control" placeholder="输入8位设备编号"></div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                            <div class="form-group"><label class="form-label">流转类型 <span class="required">*</span></label>
+                                <select id="flowMarkStatus" class="form-control">
+                                    <option value="外出参展">外出参展</option><option value="客户演示">客户演示</option><option value="外借">外借</option>
+                                </select></div>
+                            <div class="form-group"><label class="form-label">用途</label>
+                                <input type="text" id="flowMarkPurpose" class="form-control" placeholder="如：2026年亚洲电子展"></div>
+                        </div>
+                        <div class="form-group"><label class="form-label">目的地</label>
+                            <input type="text" id="flowMarkDestination" class="form-control" placeholder="展会/客户/公司名称"></div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                            <div class="form-group"><label class="form-label">联系人</label>
+                                <input type="text" id="flowMarkContact" class="form-control"></div>
+                            <div class="form-group"><label class="form-label">联系电话</label>
+                                <input type="text" id="flowMarkPhone" class="form-control"></div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                            <div class="form-group"><label class="form-label">外出日期</label>
+                                <input type="date" id="flowMarkOutDate" class="form-control" value="${new Date().toISOString().slice(0,10)}"></div>
+                            <div class="form-group"><label class="form-label">预计返还</label>
+                                <input type="date" id="flowMarkExpectedReturn" class="form-control"></div>
+                        </div>
+                        <div class="form-group"><label class="form-label">备注</label>
+                            <input type="text" id="flowMarkNotes" class="form-control" placeholder="其他备注"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('flowMarkOutModal').remove()">取消</button>
+                        <button class="btn btn-sm btn-primary" onclick="submitFlowMarkOut()">确认标记</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+        }
+
+        async function submitFlowMarkOut() {
+            const deviceCode = document.getElementById('flowMarkDeviceCode').value.trim();
+            if (!deviceCode) { showNotification('请输入设备编号', 'error'); return; }
+            try {
+                const data = await apiCall(`/devices?search=${encodeURIComponent(deviceCode)}&per_page=10`);
+                const devices = data.items || [];
+                const device = devices.find(d => d.device_code === deviceCode);
+                if (!device) { showNotification('未找到该设备编号', 'error'); return; }
+                await apiCall(`/devices/${device.id}/flow`, 'PUT', {
+                    flow_status: document.getElementById('flowMarkStatus').value,
+                    flow_purpose: document.getElementById('flowMarkPurpose').value,
+                    flow_destination: document.getElementById('flowMarkDestination').value,
+                    flow_contact: document.getElementById('flowMarkContact').value,
+                    flow_phone: document.getElementById('flowMarkPhone').value,
+                    flow_out_date: document.getElementById('flowMarkOutDate').value || null,
+                    flow_expected_return: document.getElementById('flowMarkExpectedReturn').value || null,
+                    flow_notes: document.getElementById('flowMarkNotes').value,
+                });
+                document.getElementById('flowMarkOutModal').remove();
+                showNotification('设备已标记外出', 'success');
+                loadFlowList(flowListPage);
+                loadFlowStats();
+            } catch (e) { showNotification('操作失败: ' + (e.message || ''), 'error'); }
+        }
+
+        async function openFlowEditModal(deviceId) {
+            try {
+                const device = await apiCall(`/devices/${deviceId}`);
+                const FLOW_ICONS = {'在库':'📦','外出参展':'🎪','客户演示':'💼','外借':'🤝'};
+                const icon = FLOW_ICONS[device.flow_status] || '📦';
+                const isOutgoing = device.flow_status && device.flow_status !== '在库';
+
+                const old = document.getElementById('flowEditModal');
+                if (old) old.remove();
+                const modal = document.createElement('div');
+                modal.id = 'flowEditModal';
+                modal.className = 'modal active';
+                modal.innerHTML = `<div class="modal-overlay" onclick="document.getElementById('flowEditModal').remove()"></div>
+                    <div class="modal-card" style="max-width:520px;">
+                        <div class="modal-header">
+                            <h3><i class="fas fa-route"></i> 流转信息 — ${device.device_code || '--'}</h3>
+                            <button class="modal-close" onclick="document.getElementById('flowEditModal').remove()">&times;</button>
+                        </div>
+                        <div class="modal-body" style="padding:16px 20px;">
+                            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:${isOutgoing ? 'rgba(249,115,22,.08)' : 'rgba(16,185,129,.08)'};border:1px solid ${isOutgoing ? 'rgba(249,115,22,.2)' : 'rgba(16,185,129,.2)'};">
+                                <span style="font-size:20px;">${icon}</span>
+                                <div>
+                                    <div style="font-weight:600;color:var(--color-text-1);">当前状态：${device.flow_status || '在库'}</div>
+                                    ${device.flow_overdue ? '<div style="font-size:11px;color:var(--color-error);">⚠ 已超过预计返还日期</div>' : ''}
+                                    ${device.flow_actual_return ? `<div style="font-size:11px;color:var(--color-text-3);">实际返还：${device.flow_actual_return}</div>` : ''}
+                                </div>
+                            </div>
+
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                                <div class="form-group"><label class="form-label">流转状态</label>
+                                    <select id="feFlowStatus" class="form-control">
+                                        <option value="在库" ${device.flow_status === '在库' ? 'selected' : ''}>在库</option>
+                                        <option value="外出参展" ${device.flow_status === '外出参展' ? 'selected' : ''}>外出参展</option>
+                                        <option value="客户演示" ${device.flow_status === '客户演示' ? 'selected' : ''}>客户演示</option>
+                                        <option value="外借" ${device.flow_status === '外借' ? 'selected' : ''}>外借</option>
+                                    </select></div>
+                                <div class="form-group"><label class="form-label">流转用途</label>
+                                    <input type="text" id="feFlowPurpose" class="form-control" value="${device.flow_purpose || ''}" placeholder="如：2026年亚洲电子展"></div>
+                            </div>
+                            <div class="form-group"><label class="form-label">目的地</label>
+                                <input type="text" id="feFlowDestination" class="form-control" value="${device.flow_destination || ''}" placeholder="展会/客户/公司名称"></div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                                <div class="form-group"><label class="form-label">联系人</label>
+                                    <input type="text" id="feFlowContact" class="form-control" value="${device.flow_contact || ''}"></div>
+                                <div class="form-group"><label class="form-label">联系电话</label>
+                                    <input type="text" id="feFlowPhone" class="form-control" value="${device.flow_phone || ''}"></div>
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                                <div class="form-group"><label class="form-label">外出日期</label>
+                                    <input type="date" id="feFlowOutDate" class="form-control" value="${device.flow_out_date || ''}"></div>
+                                <div class="form-group"><label class="form-label">预计返还</label>
+                                    <input type="date" id="feFlowExpectedReturn" class="form-control" value="${device.flow_expected_return || ''}"></div>
+                            </div>
+                            <div class="form-group"><label class="form-label">流转备注</label>
+                                <input type="text" id="feFlowNotes" class="form-control" value="${device.flow_notes || ''}" placeholder="其他备注信息"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('flowEditModal').remove()">取消</button>
+                            <button class="btn btn-sm btn-primary" onclick="saveFlowEdit(${deviceId})">保存</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(modal);
+            } catch (e) { showNotification('加载设备信息失败', 'error'); }
+        }
+
+        async function saveFlowEdit(deviceId) {
+            try {
+                await apiCall(`/devices/${deviceId}/flow`, 'PUT', {
+                    flow_status: document.getElementById('feFlowStatus').value,
+                    flow_purpose: document.getElementById('feFlowPurpose').value,
+                    flow_destination: document.getElementById('feFlowDestination').value,
+                    flow_contact: document.getElementById('feFlowContact').value,
+                    flow_phone: document.getElementById('feFlowPhone').value,
+                    flow_out_date: document.getElementById('feFlowOutDate').value || null,
+                    flow_expected_return: document.getElementById('feFlowExpectedReturn').value || null,
+                    flow_notes: document.getElementById('feFlowNotes').value,
+                });
+                document.getElementById('flowEditModal').remove();
+                showNotification('流转信息已更新', 'success');
+                loadDevices(currentPage);
+            } catch (e) { showNotification('保存失败', 'error'); }
+        }
+
+        async function showFlowReturnConfirm(deviceId) {
+            if (!confirm('确认标记该设备已返还？')) return;
+            try {
+                await apiCall(`/devices/${deviceId}/flow`, 'PUT', { flow_status: '在库' });
+                showNotification('设备已返还', 'success');
+                loadFlowList(flowListPage);
+                loadFlowStats();
+            } catch (e) { showNotification('操作失败', 'error'); }
+        }
+
+        async function batchFlowReturn() {
+            const ids = [...document.querySelectorAll('.flow-check:checked')].map(cb => parseInt(cb.dataset.id));
+            if (!ids.length) { showNotification('请先选择要返还的设备', 'warning'); return; }
+            if (!confirm(`确认批量返还 ${ids.length} 台设备？`)) return;
+            try {
+                await apiCall('/devices/batch/flow', 'PUT', { ids, flow_status: '在库' });
+                showNotification(`已返还 ${ids.length} 台设备`, 'success');
+                loadFlowList(flowListPage);
+                loadFlowStats();
+            } catch (e) { showNotification('操作失败', 'error'); }
+        }
+
+        document.getElementById('flowListStatusFilter')?.addEventListener('change', () => loadFlowList(1));
+        document.getElementById('flowListSearch')?.addEventListener('input', debounce(() => loadFlowList(1), 300));
 
         // ============ Init: check auth on load ============
         // Override DOMContentLoaded to check auth first
