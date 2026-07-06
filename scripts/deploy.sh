@@ -7,6 +7,10 @@
 #   sudo bash deploy.sh /opt/hardware-test-system     # 自定义安装目录
 #   sudo bash deploy.sh --mysql-password=yourpass     # 传入 MySQL 密码
 #   sudo bash deploy.sh -p yourpass                   # 传入 MySQL 密码(短选项)
+#   sudo bash deploy.sh --service                     # 跳过交互，直接安装 systemd 服务
+#   sudo bash deploy.sh --no-service                  # 跳过交互，不安装 systemd 服务
+#   sudo bash deploy.sh --nginx                       # 跳过交互，直接配置 Nginx
+#   sudo bash deploy.sh --no-nginx                    # 跳过交互，不配置 Nginx
 #   PORT=8100 sudo bash deploy.sh                     # 自定义端口
 #   sudo bash deploy.sh restart                       # 重启服务
 #   sudo bash deploy.sh status                        # 查看服务状态
@@ -23,6 +27,8 @@ SCRIPT_NAME="$(basename "$0")"
 # ---- 参数解析 ----
 MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-}"
 INSTALL_DIR=""
+INSTALL_SERVICE=""
+INSTALL_NGINX=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --mysql-password=*)
@@ -32,6 +38,22 @@ while [[ $# -gt 0 ]]; do
         --mysql-password|-p)
             MYSQL_ROOT_PASSWORD="$2"
             shift 2
+            ;;
+        --service)
+            INSTALL_SERVICE="Y"
+            shift
+            ;;
+        --no-service)
+            INSTALL_SERVICE="N"
+            shift
+            ;;
+        --nginx)
+            INSTALL_NGINX="Y"
+            shift
+            ;;
+        --no-nginx)
+            INSTALL_NGINX="N"
+            shift
             ;;
         restart|status|stop)
             if command -v systemctl &>/dev/null && systemctl is-enabled hardware-test.service &>/dev/null 2>&1; then
@@ -44,7 +66,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -*)
             echo "未知参数: $1"
-            echo "用法: sudo bash $SCRIPT_NAME [安装目录] [--mysql-password=密码]"
+            echo "用法: sudo bash $SCRIPT_NAME [安装目录] [--mysql-password=密码] [--service|--no-service] [--nginx|--no-nginx]"
             echo "管理命令: sudo bash $SCRIPT_NAME restart|status|stop"
             exit 1
             ;;
@@ -346,10 +368,14 @@ fi
 step "6/7  配置 systemd 服务"
 
 if [ "$(uname)" = "Linux" ] && command -v systemctl &>/dev/null; then
-    echo -n "    是否安装 systemd 服务? [Y/n] "
-    read -r SVC_ANS
-    SVC_ANS=${SVC_ANS:-Y}
-    if [[ "$SVC_ANS" =~ ^[Yy] ]]; then
+    # 根据 --service / --no-service 参数决定是否安装
+    if [ -z "$INSTALL_SERVICE" ]; then
+        echo -n "    是否安装 systemd 服务? [Y/n] "
+        read -r SVC_ANS
+        INSTALL_SERVICE=${SVC_ANS:-Y}
+    fi
+
+    if [[ "$INSTALL_SERVICE" =~ ^[Yy] ]]; then
         # 自动检测运行用户
         if [ -n "$SUDO_USER" ]; then
             SVC_USER="$SUDO_USER"
@@ -386,20 +412,17 @@ SVCEOF
         systemctl enable hardware-test.service 2>/dev/null || true
         ok "systemd 服务已安装"
 
-        echo -n "    是否立即启动服务? [Y/n] "
-        read -r START_ANS
-        START_ANS=${START_ANS:-Y}
-        if [[ "$START_ANS" =~ ^[Yy] ]]; then
-            systemctl restart hardware-test.service 2>/dev/null || \
-                systemctl start hardware-test.service 2>/dev/null || \
-                warn "服务启动失败"
-            sleep 2
-            if systemctl is-active --quiet hardware-test.service 2>/dev/null; then
-                ok "服务已启动"
-            else
-                warn "服务未运行，检查日志: journalctl -u hardware-test.service -n 20"
-            fi
+        systemctl restart hardware-test.service 2>/dev/null || \
+            systemctl start hardware-test.service 2>/dev/null || \
+            warn "服务启动失败"
+        sleep 2
+        if systemctl is-active --quiet hardware-test.service 2>/dev/null; then
+            ok "服务已启动"
+        else
+            warn "服务未运行，检查日志: journalctl -u hardware-test.service -n 20"
         fi
+    else
+        info "跳过 systemd 服务安装"
     fi
 else
     warn "非 Linux 环境，跳过 systemd 配置"
@@ -409,10 +432,16 @@ fi
 step "7/7  配置 Nginx 反向代理"
 
 if command -v nginx &>/dev/null; then
-    echo -n "    是否配置 Nginx 反向代理? [y/N] "
-    read -r NGX_ANS
-    if [[ "$NGX_ANS" =~ ^[Yy] ]]; then
-        read -p "    输入域名 (留空则 _ 通配): " DOMAIN
+    if [ -z "$INSTALL_NGINX" ]; then
+        echo -n "    是否配置 Nginx 反向代理? [y/N] "
+        read -r NGX_ANS
+        INSTALL_NGINX=${NGX_ANS:-N}
+    fi
+
+    if [[ "$INSTALL_NGINX" =~ ^[Yy] ]]; then
+        if [ -z "$DOMAIN" ]; then
+            read -p "    输入域名 (留空则 _ 通配): " DOMAIN
+        fi
         SERVER_NAME="${DOMAIN:-_}"
 
         # 检测宝塔面板路径

@@ -202,6 +202,15 @@ class DeviceTest(Base):
     test_date = Column(DateTime, default=datetime.now, comment="测试时间")
     operator = Column(String(50), comment="测试操作员")
     notes = Column(Text, comment="备注")
+    flow_status = Column(String(20), default="在库", comment="流转状态")
+    flow_purpose = Column(String(100), default="", comment="流转用途")
+    flow_destination = Column(String(200), default="", comment="流转目的地")
+    flow_contact = Column(String(50), default="", comment="流转联系人")
+    flow_phone = Column(String(30), default="", comment="联系电话")
+    flow_out_date = Column(Date, nullable=True, comment="外出日期")
+    flow_expected_return = Column(Date, nullable=True, comment="预计返还日期")
+    flow_actual_return = Column(Date, nullable=True, comment="实际返还日期")
+    flow_notes = Column(Text, comment="流转备注")
     sort_order = Column(Integer, default=None, comment="排序序号")
     batch_id = Column(Integer, ForeignKey("batches.id"), nullable=True, comment="所属批次")
     created_at = Column(DateTime, default=datetime.now)
@@ -232,6 +241,16 @@ class DeviceTest(Base):
             "test_date": self.test_date.isoformat() if self.test_date else "",
             "operator": self.operator or "",
             "notes": self.notes or "",
+            "flow_status": self.flow_status or "在库",
+            "flow_purpose": self.flow_purpose or "",
+            "flow_destination": self.flow_destination or "",
+            "flow_contact": self.flow_contact or "",
+            "flow_phone": self.flow_phone or "",
+            "flow_out_date": self.flow_out_date.isoformat() if self.flow_out_date else "",
+            "flow_expected_return": self.flow_expected_return.isoformat() if self.flow_expected_return else "",
+            "flow_actual_return": self.flow_actual_return.isoformat() if self.flow_actual_return else "",
+            "flow_notes": self.flow_notes or "",
+            "flow_overdue": bool(self.flow_expected_return and self.flow_expected_return < date.today() and self.flow_status and self.flow_status != "在库"),
             "sort_order": self.sort_order,
             "batch_id": self.batch_id,
             "batch_no": self.batch.batch_no if self.batch else "",
@@ -1834,6 +1853,7 @@ def list_devices():
         date_from = request.args.get("date_from", "").strip()
         date_to = request.args.get("date_to", "").strip()
         batch_id = request.args.get("batch_id", "").strip()
+        flow_status = request.args.get("flow_status", "").strip()
         sort_by = request.args.get("sort_by", "test_date")
         sort_order = request.args.get("sort_order", "desc")
 
@@ -1867,6 +1887,11 @@ def list_devices():
                 query = query.filter(DeviceTest.batch_id == int(batch_id))
             except ValueError:
                 pass
+        if flow_status:
+            if flow_status == "outgoing":
+                query = query.filter(DeviceTest.flow_status != "在库", DeviceTest.flow_status.isnot(None), DeviceTest.flow_status != "")
+            else:
+                query = query.filter(DeviceTest.flow_status == flow_status)
 
         sort_col = getattr(DeviceTest, sort_by, DeviceTest.test_date)
         query = query.order_by(desc(sort_col) if sort_order == "desc" else asc(sort_col))
@@ -2008,6 +2033,8 @@ def update_device(device_id):
             "fault_reason", "fault_disposition", "return_date",
             "return_tracking", "fault_return_courier", "fault_return_tracking",
             "operator", "notes", "test_date", "sort_order", "device_type",
+            "flow_status", "flow_purpose", "flow_destination", "flow_contact",
+            "flow_phone", "flow_notes",
         ]
 
         old_batch_id = device.batch_id
@@ -2024,6 +2051,16 @@ def update_device(device_id):
                 elif isinstance(val, str):
                     val = val.strip() or None
                 setattr(device, key, val)
+
+        # 处理流转日期字段
+        for date_field in ["flow_out_date", "flow_expected_return", "flow_actual_return"]:
+            if date_field in data:
+                val = data[date_field]
+                setattr(device, date_field, datetime.strptime(val, "%Y-%m-%d").date() if val else None)
+
+        # 标记返还时自动填写实际返还日期
+        if "flow_status" in data and data["flow_status"] == "在库" and not device.flow_actual_return:
+            device.flow_actual_return = date.today()
 
         # 设备编号：用户填写8位则使用，否则从板卡MAC生成
         if "device_code" in data:
@@ -2112,6 +2149,100 @@ def delete_device(device_id):
     except Exception as e:
         db.rollback()
         return api_response(success=False, message=str(e), code=500)
+    finally:
+        db.close()
+
+
+# --- 设备流转 ---
+
+@app.route("/api/devices/<int:device_id>/flow", methods=["PUT"])
+@login_required
+def update_device_flow(device_id):
+    """更新设备流转信息"""
+    data = request.get_json(force=True)
+    db = next(get_db())
+    try:
+        device = db.query(DeviceTest).filter(DeviceTest.id == device_id).first()
+        if not device:
+            return api_response(success=False, message="设备不存在", code=404)
+
+        flow_fields = ["flow_status", "flow_purpose", "flow_destination", "flow_contact", "flow_phone", "flow_notes"]
+        for f in flow_fields:
+            if f in data:
+                setattr(device, f, (data[f] or "").strip())
+
+        if "flow_out_date" in data:
+            device.flow_out_date = datetime.strptime(data["flow_out_date"], "%Y-%m-%d").date() if data["flow_out_date"] else None
+        if "flow_expected_return" in data:
+            device.flow_expected_return = datetime.strptime(data["flow_expected_return"], "%Y-%m-%d").date() if data["flow_expected_return"] else None
+        if "flow_actual_return" in data:
+            device.flow_actual_return = datetime.strptime(data["flow_actual_return"], "%Y-%m-%d").date() if data["flow_actual_return"] else None
+
+        # 标记返还时自动填写实际返还日期
+        if data.get("flow_status") == "在库" and not device.flow_actual_return:
+            device.flow_actual_return = date.today()
+
+        db.commit()
+        return api_response(data=device.to_dict(), message="流转信息已更新")
+    except Exception as e:
+        db.rollback()
+        return api_response(success=False, message=str(e), code=500)
+    finally:
+        db.close()
+
+
+@app.route("/api/devices/batch/flow", methods=["PUT"])
+@login_required
+def batch_update_flow():
+    """批量更新设备流转状态"""
+    data = request.get_json(force=True)
+    ids = data.get("ids", [])
+    flow_status = data.get("flow_status", "")
+    if not ids or not flow_status:
+        return api_response(success=False, message="参数无效", code=400)
+
+    db = next(get_db())
+    try:
+        update_data = {"flow_status": flow_status}
+        if flow_status == "在库":
+            update_data["flow_actual_return"] = date.today()
+        updated = db.query(DeviceTest).filter(DeviceTest.id.in_(ids)).update(update_data, synchronize_session=False)
+        db.commit()
+        return api_response(data={"updated": updated}, message=f"已更新 {updated} 台设备流转状态")
+    except Exception as e:
+        db.rollback()
+        return api_response(success=False, message=str(e), code=500)
+    finally:
+        db.close()
+
+
+@app.route("/api/statistics/flow", methods=["GET"])
+@login_required
+def flow_statistics():
+    """获取流转统计"""
+    db = next(get_db())
+    try:
+        today = date.today()
+        in_stock = db.query(func.count(DeviceTest.id)).filter(DeviceTest.flow_status == "在库").scalar() or 0
+        outgoing = db.query(func.count(DeviceTest.id)).filter(
+            DeviceTest.flow_status != "在库", DeviceTest.flow_status.isnot(None), DeviceTest.flow_status != ""
+        ).scalar() or 0
+        overdue = db.query(func.count(DeviceTest.id)).filter(
+            DeviceTest.flow_expected_return < today,
+            DeviceTest.flow_status != "在库",
+            DeviceTest.flow_status.isnot(None), DeviceTest.flow_status != ""
+        ).scalar() or 0
+        month_start = today.replace(day=1)
+        returned_this_month = db.query(func.count(DeviceTest.id)).filter(
+            DeviceTest.flow_actual_return >= month_start,
+            DeviceTest.flow_actual_return.isnot(None)
+        ).scalar() or 0
+        return api_response(data={
+            "in_stock": in_stock,
+            "outgoing": outgoing,
+            "overdue": overdue,
+            "returned_this_month": returned_this_month
+        })
     finally:
         db.close()
 
@@ -2900,8 +3031,8 @@ def export_excel_custom():
     column_config = {
         "device_code": ("设备编号", lambda d: d.get("device_code", "")),
         "device_type": ("设备类型", lambda d: d.get("device_type", "")),
-        "board_mac": ("板卡MAC", lambda d: d.get("board_mac", "")),
-        "wireless_mac": ("无线MAC", lambda d: d.get("wireless_mac", "")),
+        "board_mac": ("物理MAC", lambda d: d.get("board_mac", "")),
+        "wireless_mac": ("MAC地址", lambda d: d.get("wireless_mac", "")),
         "ip_address": ("IP地址", lambda d: d.get("ip_address", "")),
         "batch_no": ("所属批次", lambda d: d.get("batch_no", "")),
         "status": ("状态", lambda d: {"normal": "正常", "fault": "故障", "pending": "待处理"}.get(d.get("status", ""), d.get("status", ""))),
@@ -2911,6 +3042,11 @@ def export_excel_custom():
         "test_date": ("测试时间", lambda d: d.get("test_date", "")),
         "fault_reason": ("故障原因", lambda d: d.get("fault_reason", "")),
         "notes": ("备注", lambda d: d.get("notes", "") or d.get("remark", "")),
+        "flow_status": ("流转状态", lambda d: d.get("flow_status", "")),
+        "flow_purpose": ("流转用途", lambda d: d.get("flow_purpose", "")),
+        "flow_destination": ("目的地", lambda d: d.get("flow_destination", "")),
+        "flow_out_date": ("外出日期", lambda d: d.get("flow_out_date", "")),
+        "flow_expected_return": ("预计返还", lambda d: d.get("flow_expected_return", "")),
     }
 
     if not selected_columns:
@@ -4248,7 +4384,7 @@ if __name__ == "__main__":
     finally:
         db.close()
 
-    PORT = int(os.getenv("APP_PORT", os.getenv("PORT", "8000")))
+    PORT = int(os.getenv("APP_PORT", os.getenv("PORT", "8100")))
 
     print("=" * 60)
     print("  硬件测试记录系统 - Hardware Test Record System")
