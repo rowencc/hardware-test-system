@@ -54,11 +54,17 @@ except ImportError:
     pass
 
 # 数据库配置 — 优先环境变量，回退默认值
+try:
+    _db_port = int(os.getenv("DB_PORT", "3306"))
+except (ValueError, TypeError):
+    print("[ERROR] DB_PORT 环境变量值无效，已回退到默认值 3306")
+    _db_port = 3306
+
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "127.0.0.1"),
-    "port": int(os.getenv("DB_PORT", "3306")),
+    "port": _db_port,
     "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", "root"),
+    "password": os.getenv("DB_PASSWORD", ""),
     "database": os.getenv("DB_DATABASE", "hardware_test_system"),
     "charset": "utf8mb4",
 }
@@ -94,7 +100,7 @@ def parse_iso_date(date_str):
 # ---------------------------------------------------------------------------
 # 数据库模型
 # ---------------------------------------------------------------------------
-engine = create_engine(DATABASE_URL, pool_size=10, pool_recycle=3600, echo=False)
+engine = create_engine(DATABASE_URL, pool_size=10, pool_recycle=3600, pool_pre_ping=True, echo=False)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
@@ -4299,26 +4305,8 @@ if __name__ == "__main__":
         except Exception:
             pass
 
-    # 预置管理员账号
-    db = SessionLocal()
-    try:
-        existing = db.query(User).filter(User.username == "admin").first()
-        if not existing:
-            admin = User(
-                username="admin",
-                password_hash=generate_password_hash("admin123", method='pbkdf2:sha256'),
-                display_name="系统管理员",
-                role="admin",
-                is_active=1,
-            )
-            db.add(admin)
-            db.commit()
-            print("[INFO] 已创建默认管理员: admin / admin123")
-    except Exception as e:
-        db.rollback()
-        print(f"[WARN] 创建默认管理员失败: {e}")
-    finally:
-        db.close()
+    # 注意: 默认管理员不再每次启动自动创建，通过 Web 界面管理
+    # 首次部署请使用: python3 -c "..." 手动创建
 
     # 预置默认测试标准
     db = SessionLocal()
@@ -4385,6 +4373,72 @@ if __name__ == "__main__":
         db.close()
 
     PORT = int(os.getenv("APP_PORT", os.getenv("PORT", "8100")))
+
+    # ---- 启动前校验 ----
+    # 1. 端口检测
+    import socket as _sock
+    _probe = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+    try:
+        _probe.settimeout(1)
+        _probe.bind(("0.0.0.0", PORT))
+        _probe.close()
+    except OSError as e:
+        # 找出占用端口的进程
+        _who = ""
+        try:
+            import subprocess
+            _r = subprocess.run(["lsof", "-ti", f":{PORT}"], capture_output=True, text=True, timeout=3)
+            if _r.stdout.strip():
+                _pids = _r.stdout.strip().split("\n")
+                for _p in _pids[:3]:
+                    _ps = subprocess.run(["ps", "-p", _p, "-o", "command="], capture_output=True, text=True, timeout=3)
+                    if _ps.stdout.strip():
+                        _who += f"  PID {_p}: {_ps.stdout.strip()[:80]}\n"
+        except Exception:
+            pass
+        print("=" * 60)
+        print(f"  [ERROR] 端口 {PORT} 已被占用，无法启动")
+        if _who:
+            print(f"  占用进程:\n{_who.rstrip()}")
+        print(f"  解决方案:")
+        print(f"    1. 停止占用进程: lsof -ti:{PORT} | xargs kill")
+        print(f"    2. 或设置其他端口: PORT=8101 python3 app.py")
+        print("=" * 60)
+        exit(1)
+
+    # 2. 数据库连接预检
+    print("  正在检查数据库连接...")
+    _db_ok = False
+    try:
+        _test_db = SessionLocal()
+        _test_db.execute(text("SELECT 1"))
+        _db_ok = True
+        _test_db.close()
+    except Exception as e:
+        _err_msg = str(e)
+        if "Access denied" in _err_msg:
+            print(f"  [ERROR] 数据库认证失败: 用户 '{DB_CONFIG['user']}' 密码错误")
+        elif "Can't connect" in _err_msg or "Connection refused" in _err_msg:
+            print(f"  [ERROR] 无法连接数据库 {DB_CONFIG['host']}:{DB_CONFIG['port']}")
+            print(f"         请确认 MySQL 服务已启动")
+        else:
+            print(f"  [ERROR] 数据库连接异常: {_err_msg[:120]}")
+        print(f"  数据库配置: {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}")
+        print(f"  请检查 .env 文件中的 DB_HOST / DB_PORT / DB_USER / DB_PASSWORD")
+        exit(1)
+
+    if not _db_ok:
+        exit(1)
+
+    # ---- 优雅退出 ----
+    import signal
+    def _shutdown(signum, frame):
+        print(f"\n[INFO] 收到信号 {signum}，正在关闭...")
+        engine.dispose()
+        print("[INFO] 数据库连接池已关闭")
+        exit(0)
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
 
     print("=" * 60)
     print("  硬件测试记录系统 - Hardware Test Record System")

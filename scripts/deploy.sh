@@ -255,22 +255,25 @@ fi
 source venv/bin/activate
 pip install --upgrade pip -q 2>/dev/null || true
 
-# 安装依赖（带重试）
+# 安装依赖（带重试，通过 import 验证而非 grep error 文本）
 RETRY=0
+INSTALL_OK=false
 while [ $RETRY -lt 3 ]; do
-    if pip install -r requirements.txt -q 2>&1 | grep -qi "error"; then
-        RETRY=$((RETRY+1))
-        warn "依赖安装失败，重试 ($RETRY/3)..."
-        sleep 2
-    else
-        break
+    if pip install -r requirements.txt -q 2>&1; then
+        # 验证关键包可导入
+        if python -c "import flask, flask_cors, pymysql, sqlalchemy, openpyxl" 2>/dev/null; then
+            INSTALL_OK=true
+            break
+        fi
     fi
+    RETRY=$((RETRY+1))
+    warn "依赖安装验证失败，重试 ($RETRY/3)..."
+    sleep 2
 done
 
-# 验证关键依赖
-for pkg in flask flask-cors pymysql sqlalchemy openpyxl python-dotenv; do
-    pip show "$pkg" &>/dev/null || fail "关键依赖 $pkg 安装失败"
-done
+if [ "$INSTALL_OK" = false ]; then
+    fail "依赖安装失败，请手动执行: pip install -r requirements.txt"
+fi
 ok "Python 依赖安装完成"
 
 # ====== 4. .env 配置 ======
@@ -398,6 +401,7 @@ Type=simple
 User=${SVC_USER}
 Group=${SVC_USER}
 WorkingDirectory=${PROJECT_DIR}
+EnvironmentFile=-${PROJECT_DIR}/.env
 Environment="PATH=${PROJECT_DIR}/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=${PROJECT_DIR}/venv/bin/python3 ${PROJECT_DIR}/backend/app.py
 Restart=on-failure
@@ -459,6 +463,12 @@ if command -v nginx &>/dev/null; then
             NGINX_CONF="/etc/nginx/conf.d/hardware-test.conf"
         fi
 
+        # 备份旧配置
+        if [ -f "$NGINX_CONF" ]; then
+            cp "$NGINX_CONF" "${NGINX_CONF}.bak.$(date +%Y%m%d%H%M%S)"
+            info "已备份旧配置 → ${NGINX_CONF}.bak.*"
+        fi
+
         cat > "$NGINX_CONF" <<NGXEOF
 upstream hardware_test_backend {
     server 127.0.0.1:${BACKEND_PORT};
@@ -486,7 +496,7 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For \$proxy_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 120s;
         proxy_send_timeout 120s;
@@ -499,16 +509,70 @@ server {
     }
 }
 NGXEOF
-        nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || \
-            service nginx reload 2>/dev/null || \
-            warn "Nginx 重载失败，请检查配置"
-        ok "Nginx 配置完成 → ${NGINX_CONF}"
+        # 验证配置语法，失败则恢复备份
+        if nginx -t 2>/dev/null; then
+            systemctl reload nginx 2>/dev/null || service nginx reload 2>/dev/null || true
+            ok "Nginx 配置完成 → ${NGINX_CONF}"
+        else
+            # 恢复备份
+            LATEST_BAK=$(ls -t "${NGINX_CONF}".bak.* 2>/dev/null | head -1)
+            if [ -n "$LATEST_BAK" ]; then
+                cp "$LATEST_BAK" "$NGINX_CONF"
+                warn "Nginx 配置语法错误，已恢复备份"
+            else
+                warn "Nginx 配置语法错误，无备份可恢复"
+            fi
+            fail "请检查 Nginx 配置后重试"
+        fi
     fi
 else
     warn "Nginx 未安装"
 fi
 
-# ====== 完成 ======
+# ====== 完成：自动验证 ======
+echo ""
+echo -e "${GREEN}${BOLD}"
+echo "  ==========================================================="
+echo "    部署完成！"
+echo "  ==========================================================="
+echo -e "${NC}"
+
+echo "  自动验证..."
+
+# 验证后端端口
+if command -v ss &>/dev/null; then
+    PORT_OK=$(ss -tlnp 2>/dev/null | grep -c ":${BACKEND_PORT} " || true)
+elif command -v lsof &>/dev/null; then
+    PORT_OK=$(lsof -i:"${BACKEND_PORT}" 2>/dev/null | grep -c LISTEN || true)
+else
+    PORT_OK=0
+fi
+
+# 验证 health API
+HEALTH_OK=0
+if curl -sf -o /dev/null "http://127.0.0.1:${BACKEND_PORT}/api/health" 2>/dev/null; then
+    HEALTH_OK=1
+fi
+
+echo "  端口 ${BACKEND_PORT}:  $([ "$PORT_OK" -gt 0 ] && echo -e '${GREEN}监听中${NC}' || echo -e '${RED}未监听${NC}')"
+echo "  健康检查:          $([ "$HEALTH_OK" -eq 1 ] && echo -e '${GREEN}正常${NC}' || echo -e '${RED}异常${NC}')"
+
+if [ "$PORT_OK" -eq 0 ] || [ "$HEALTH_OK" -eq 0 ]; then
+    echo ""
+    warn "服务可能未正常运行，请检查:"
+    echo "    systemctl status hardware-test.service"
+    echo "    journalctl -u hardware-test.service -n 20 --no-pager"
+fi
+
+echo ""
+echo "  安装目录:   ${PROJECT_DIR}"
+echo "  后端端口:   ${BACKEND_PORT}"
+echo "  健康检查:   curl http://127.0.0.1:${BACKEND_PORT}/api/health"
+echo ""
+echo "  管理命令:"
+echo "    systemctl status  hardware-test.service    # 服务状态"
+echo "    systemctl restart hardware-test.service    # 重启"
+echo "    journalctl -u hardware-test.service -f     # 实时日志"
 echo ""
 echo -e "${GREEN}${BOLD}"
 echo "  ==========================================================="

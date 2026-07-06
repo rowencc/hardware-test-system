@@ -38,7 +38,7 @@ done
 if [ -z "$PYTHON_BIN" ]; then
     fail "未找到 Python 3.9+，请先安装"
 fi
-ok "Python $($PYTHON_BIN --version 2>&1)"
+ok "Python $($PYTHON_BIN --version 2>&1) ($PYTHON_BIN)"
 
 # ====== 2. 检查依赖 ======
 MISSING_DEPS=()
@@ -50,13 +50,25 @@ for pkg in flask flask-cors pymysql sqlalchemy openpyxl markdown python-dotenv w
 done
 if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
     warn "安装缺失依赖: ${MISSING_DEPS[*]}"
-    "$PYTHON_BIN" -m pip install "${MISSING_DEPS[@]}" -q 2>&1 | tail -3
+    if ! "$PYTHON_BIN" -m pip install "${MISSING_DEPS[@]}" -q 2>&1; then
+        fail "依赖安装失败，请手动执行: $PYTHON_BIN -m pip install ${MISSING_DEPS[*]}"
+    fi
+    # 验证安装成功
+    for pkg in "${MISSING_DEPS[@]}"; do
+        import_name="${pkg//-/_}"
+        if ! "$PYTHON_BIN" -c "import $import_name" 2>/dev/null; then
+            fail "依赖 $pkg 安装后仍无法导入"
+        fi
+    done
 fi
 ok "依赖检查完成"
 
 # ====== 3. 初始化数据库 ======
 MYSQL_CMD=""
-if [ -S "/Applications/ServBay/tmp/mysql.sock" ]; then
+# 优先检测 TCP 连接（跨平台兼容）
+if "$PYTHON_BIN" -c "import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', 3306)); s.close()" 2>/dev/null; then
+    MYSQL_CMD="mysql -u root -h 127.0.0.1 -P 3306"
+elif [ -S "/Applications/ServBay/tmp/mysql.sock" ]; then
     MYSQL_CMD="mysql -u root -S /Applications/ServBay/tmp/mysql.sock"
 elif command -v mysql &>/dev/null; then
     MYSQL_CMD="mysql -u root -h 127.0.0.1 -P 3306"
@@ -69,17 +81,56 @@ if [ -n "$MYSQL_CMD" ]; then
         warn "数据库初始化可能已存在，继续..."
     fi
 else
-    warn "未找到 mysql 客户端，跳过数据库初始化"
+    warn "未找到可用的 MySQL 连接，跳过数据库初始化"
 fi
 
-# ====== 4. 是否注册为系统服务 ======
+# ====== 4. 端口检测 ======
+PORT_IN_USE=false
+if command -v lsof &>/dev/null; then
+    if lsof -ti:"$PORT" &>/dev/null; then
+        PORT_IN_USE=true
+    fi
+elif command -v fuser &>/dev/null; then
+    if fuser "${PORT}/tcp" &>/dev/null 2>&1; then
+        PORT_IN_USE=true
+    fi
+fi
+
+if [ "$PORT_IN_USE" = true ]; then
+    warn "端口 $PORT 已被占用:"
+    if command -v lsof &>/dev/null; then
+        lsof -i:"$PORT" 2>/dev/null | head -5
+    elif command -v ss &>/dev/null; then
+        ss -tlnp | grep ":$PORT " || true
+    fi
+    echo ""
+    if [ "$1" != "--service" ]; then
+        read -rp "端口 $PORT 被占用，是否停止占用进程并继续？[y/N]: " KILL_ANS
+        case "$KILL_ANS" in
+            [Yy]|[Yy][Ee][Ss])
+                PIDS=$(lsof -ti:"$PORT" 2>/dev/null || fuser "${PORT}/tcp" 2>/dev/null || true)
+                if [ -n "$PIDS" ]; then
+                    for pid in $PIDS; do
+                        kill "$pid" 2>/dev/null || true
+                    done
+                    sleep 2
+                    ok "已停止占用进程"
+                fi
+                ;;
+            *)
+                fail "请先手动释放端口 $PORT 或设置 PORT 环境变量指定其他端口"
+                ;;
+        esac
+    fi
+fi
+
+# ====== 5. 是否注册为系统服务 ======
 INSTALL_SERVICE=false
 if [ "$1" = "--service" ]; then
     INSTALL_SERVICE=true
 fi
 
 if [ "$INSTALL_SERVICE" = false ] && [ "$(uname)" = "Linux" ] && command -v systemctl &>/dev/null; then
-    # 交互式询问
     echo ""
     read -rp "是否安装为系统服务（开机自启动）？[y/N]: " ANSWER
     case "$ANSWER" in
@@ -94,15 +145,13 @@ if [ "$INSTALL_SERVICE" = true ]; then
     fi
 fi
 
-# ====== 5. 安装 systemd 服务 ======
+# ====== 6. 安装 systemd 服务 ======
 if [ "$INSTALL_SERVICE" = true ]; then
     echo ""
     echo -e "${BOLD}${CYAN}==> 安装系统服务${NC}"
 
-    # 自动检测运行用户
     SVC_USER="${SUDO_USER:-$USER}"
     if [ "$SVC_USER" = "root" ]; then
-        # 尝试用更安全的用户
         for u in www-data nginx nobody; do
             if id "$u" &>/dev/null 2>&1; then
                 SVC_USER="$u"
@@ -123,7 +172,8 @@ Type=simple
 User=${SVC_USER}
 Group=${SVC_USER}
 WorkingDirectory=${PROJECT_DIR}
-Environment="PATH=${PROJECT_DIR}/venv/bin:${PATH}"
+EnvironmentFile=-${PROJECT_DIR}/.env
+Environment=PORT=${PORT}
 ExecStart=${PROJECT_DIR}/venv/bin/python3 ${BACKEND_DIR}/app.py
 Restart=on-failure
 RestartSec=5
@@ -137,13 +187,15 @@ SVCEOF
     sudo systemctl daemon-reload
     sudo systemctl enable "$SERVICE_NAME" 2>/dev/null
     sudo systemctl restart "$SERVICE_NAME"
-    sleep 2
+    sleep 3
 
     if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
         ok "服务安装成功并已启动"
         ok "开机自启动已启用"
     else
-        warn "服务启动可能失败，检查日志: sudo journalctl -u $SERVICE_NAME -n 20"
+        warn "服务启动可能失败"
+        echo "  检查: sudo journalctl -u $SERVICE_NAME -n 20 --no-pager"
+        echo "  状态: sudo systemctl status $SERVICE_NAME --no-pager"
     fi
 
     echo ""
@@ -154,9 +206,9 @@ SVCEOF
     echo "  sudo journalctl -u $SERVICE_NAME -f    # 实时日志"
     echo "  sudo systemctl disable $SERVICE_NAME   # 取消自启动"
 else
-    # ====== 6. 普通启动（前台） ======
+    # ====== 7. 普通启动（前台） ======
     echo ""
-    echo -e "${BOLD}${CYAN}==> 普通启动（前台运行）${NC}"
+    echo -e "${BOLD}${CYAN}==> 前台启动${NC}"
     echo -e "  后端 API: ${GREEN}http://127.0.0.1:${PORT}${NC}"
     echo -e "  前端页面: 在浏览器中打开 frontend/index.html"
     echo -e "  停止服务: Ctrl+C"
