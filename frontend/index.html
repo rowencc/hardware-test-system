@@ -3550,6 +3550,25 @@
                                 <input type="text" id="cfgBatchCodePrefix" class="form-control" placeholder="例如：BT">
                                 <div class="form-hint">批次编号前缀，格式为 {前缀}{YYYYMMDD}{序号}，如 BT20260611001</div>
                             </div>
+                            <div class="form-group">
+                                <label class="form-label">系统时区</label>
+                                <select id="cfgTimezone" class="form-control">
+                                    <option value="Asia/Shanghai">Asia/Shanghai (UTC+8 北京时间)</option>
+                                    <option value="Asia/Chongqing">Asia/Chongqing (UTC+8 重庆时间)</option>
+                                    <option value="Asia/Harbin">Asia/Harbin (UTC+8 哈尔滨时间)</option>
+                                    <option value="Asia/Urumqi">Asia/Urumqi (UTC+6 乌鲁木齐时间)</option>
+                                    <option value="Asia/Taipei">Asia/Taipei (UTC+8 台北时间)</option>
+                                    <option value="Asia/Tokyo">Asia/Tokyo (UTC+9 东京时间)</option>
+                                    <option value="Asia/Seoul">Asia/Seoul (UTC+9 首尔时间)</option>
+                                    <option value="Asia/Singapore">Asia/Singapore (UTC+8 新加坡时间)</option>
+                                    <option value="Asia/Kolkata">Asia/Kolkata (UTC+5:30 印度时间)</option>
+                                    <option value="America/New_York">America/New_York (UTC-5/-4 纽约时间)</option>
+                                    <option value="America/Los_Angeles">America/Los_Angeles (UTC-8/-7 洛杉矶时间)</option>
+                                    <option value="Europe/London">Europe/London (UTC+0/+1 伦敦时间)</option>
+                                    <option value="UTC">UTC (UTC+0 协调世界时)</option>
+                                </select>
+                                <div class="form-hint">系统所有时间显示和记录使用的时区，修改后立即生效</div>
+                            </div>
                             <div style="display:flex;gap:12px;align-items:center;">
                                 <button type="button" class="btn btn-primary" id="btnSaveSettings">
                                     <i class="fas fa-save"></i> 保存配置
@@ -4265,12 +4284,16 @@
         // 常用命令
         let commandsCache = [];
         let cmdEditId = null;
+        let systemTimezone = 'Asia/Shanghai'; // 从后端加载的系统时区
 
         // DOM 加载完成
         document.addEventListener('DOMContentLoaded', function() {
             // Theme initialization
             initTheme();
-            
+
+            // 加载系统时区配置
+            loadTimezoneConfig();
+
             initNavigation();
             initForms();
             initEventListeners();
@@ -4279,6 +4302,19 @@
             // they'll 401 if the user isn't logged in yet.
             setInterval(updateTime, 1000);
         });
+
+        // 加载系统时区配置
+        async function loadTimezoneConfig() {
+            try {
+                const resp = await fetch(`${API_BASE_URL}/timezone`);
+                const data = await resp.json();
+                if (data.success && data.data && data.data.timezone) {
+                    systemTimezone = data.data.timezone;
+                }
+            } catch (e) {
+                console.warn('加载时区配置失败，使用默认值:', e);
+            }
+        }
         
         // 导航切换
         function initNavigation() {
@@ -4448,10 +4484,8 @@
                 }
             });
             
-            // 设置当前时间为默认测试时间
-            const now = new Date();
-            const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-            document.getElementById('testDate').value = localDateTime;
+            // 设置当前北京时间为默认测试时间
+            document.getElementById('testDate').value = beijingISO().slice(0, 16);
             // 操作员建议在切换到 record 时加载，避免页面加载时 401
         }
         
@@ -4615,7 +4649,7 @@
                 showNotification('正在下载模板...', 'info');
                 const link = document.createElement('a');
                 link.href = `${API_BASE_URL}/template/download`;
-                link.download = `batch_import_template_${new Date().toISOString().slice(0, 10)}.xlsx`;
+                link.download = `batch_import_template_${beijingISO().slice(0, 10)}.xlsx`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
@@ -4640,19 +4674,27 @@
         }
         
         function formatDateTime(dateStr) {
+            if (!dateStr) return '';
             const date = new Date(dateStr);
-            return date.toLocaleString('zh-CN');
+            return date.toLocaleString('zh-CN', { timeZone: systemTimezone });
         }
-        
+
         function formatDate(dateStr) {
+            if (!dateStr) return '';
             const date = new Date(dateStr);
-            return date.toLocaleDateString('zh-CN');
+            return date.toLocaleDateString('zh-CN', { timeZone: systemTimezone });
+        }
+
+        // 获取系统时区 ISO 字符串（无时区后缀）
+        function beijingISO(date) {
+            if (!date) date = new Date();
+            return date.toLocaleString('sv-SE', { timeZone: systemTimezone }).replace(' ', 'T');
         }
         
         function updateTime() {
             const now = new Date();
-            document.getElementById('lastUpdateTime').textContent = 
-                now.toLocaleTimeString('zh-CN');
+            document.getElementById('lastUpdateTime').textContent =
+                now.toLocaleTimeString('zh-CN', { timeZone: systemTimezone });
         }
         
         // API 调用
@@ -5280,6 +5322,7 @@
                     document.getElementById('cfgKuaidiKey').value = cfg.kuaidi100_key || '';
                     document.getElementById('cfgReturnCodePrefix').value = cfg.return_code_prefix || 'RT';
                     document.getElementById('cfgBatchCodePrefix').value = cfg.batch_code_prefix || 'BT';
+                    document.getElementById('cfgTimezone').value = cfg.timezone || 'Asia/Shanghai';
                 }
             } catch (e) {
                 console.error('加载系统配置失败:', e);
@@ -5565,6 +5608,7 @@
                 kuaidi100_key: document.getElementById('cfgKuaidiKey').value.trim(),
                 return_code_prefix: document.getElementById('cfgReturnCodePrefix').value.trim(),
                 batch_code_prefix: document.getElementById('cfgBatchCodePrefix').value.trim(),
+                timezone: document.getElementById('cfgTimezone').value,
             };
             
             try {
@@ -6852,7 +6896,7 @@
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `设备列表_${new Date().toISOString().slice(0,10)}.xlsx`;
+                link.download = `设备列表_${beijingISO().slice(0,10)}.xlsx`;
                 document.body.appendChild(link);
                 link.click();
                 link.remove();
@@ -8525,7 +8569,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                 board_mac, wireless_mac, ip_address, status, device_type, device_code,
                 fault_reason: fault_reason || null,
                 notes: notes || null,
-                test_date: test_date ? new Date(test_date).toISOString() : null,
+                test_date: test_date ? beijingISO(new Date(test_date)) : null,
                 operator: operator || null
             };
 
@@ -8541,7 +8585,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
         document.getElementById('adDownloadTemplate').addEventListener('click', function() {
             const link = document.createElement('a');
             link.href = `${API_BASE_URL}/template/download`;
-            link.download = `batch_import_template_${new Date().toISOString().slice(0, 10)}.xlsx`;
+            link.download = `batch_import_template_${beijingISO().slice(0, 10)}.xlsx`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -8622,7 +8666,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                         status: (status === '正常' || status.toLowerCase() === 'normal') ? 'normal' : 'fault',
                         fault_reason: fault_reason || '',
                         notes: notes || '',
-                        test_date: test_date ? new Date(test_date).toISOString() : new Date().toISOString(),
+                        test_date: test_date ? beijingISO(new Date(test_date)) : beijingISO(),
                         operator: operator || ''
                     };
 
@@ -9146,7 +9190,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             showNotification('正在生成报告...', 'info');
             const a = document.createElement('a');
             a.href = `/api/batches/${batchId}/export/excel`;
-            a.download = `${b.batch_no || 'batch'}_测试报告_${new Date().toISOString().slice(0,10)}.xlsx`;
+            a.download = `${b.batch_no || 'batch'}_测试报告_${beijingISO().slice(0,10)}.xlsx`;
             a.click();
             showNotification('测试报告已导出 (Excel)', 'success');
         }
@@ -9501,7 +9545,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             overviewHtml += `<tr><td style="padding:6px 8px;color:var(--color-text-3);border-bottom:1px solid var(--color-border-subtle);">未录入设备</td><td style="padding:6px 8px;text-align:right;font-weight:700;border-bottom:1px solid var(--color-border-subtle);">${remaining} 台（可能为故障/待处理）</td></tr>`;
             overviewHtml += `<tr><td style="padding:6px 8px;color:var(--color-text-3);border-bottom:1px solid var(--color-border-subtle);">综合良品率</td><td style="padding:6px 8px;text-align:right;font-weight:700;border-bottom:1px solid var(--color-border-subtle);color:${yieldRate >= 90 ? 'var(--color-success)' : yieldRate >= 70 ? 'var(--color-warning)' : 'var(--color-error)'};">${yieldRate}%</td></tr>`;
             overviewHtml += '</table>';
-            overviewHtml += `<p style="color:var(--color-text-2);margin-bottom:12px;font-size:11px;">完成时间：<strong>${new Date().toLocaleString('zh-CN')}</strong></p>`;
+            overviewHtml += `<p style="color:var(--color-text-2);margin-bottom:12px;font-size:11px;">完成时间：<strong>${new Date().toLocaleString('zh-CN', { timeZone: systemTimezone })}</strong></p>`;
 
             if (Object.keys(stdMap).length > 0) {
                 overviewHtml += '<div style="font-size:12px;margin-bottom:8px;"><div style="color:var(--color-text-2);margin-bottom:6px;font-weight:600;">各标准通过率概览：</div>';
@@ -10109,7 +10153,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                         </div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                             <div class="form-group"><label class="form-label">外出日期</label>
-                                <input type="date" id="flowMarkOutDate" class="form-control" value="${new Date().toISOString().slice(0,10)}"></div>
+                                <input type="date" id="flowMarkOutDate" class="form-control" value="${beijingISO().slice(0,10)}"></div>
                             <div class="form-group"><label class="form-label">预计返还</label>
                                 <input type="date" id="flowMarkExpectedReturn" class="form-control"></div>
                         </div>

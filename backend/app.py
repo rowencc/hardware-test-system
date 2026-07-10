@@ -8,6 +8,7 @@ import io
 import json
 from datetime import datetime, date, timedelta
 from functools import wraps
+from zoneinfo import ZoneInfo
 from urllib.parse import quote_plus
 
 from flask import Flask, request, jsonify, send_file, send_from_directory, session
@@ -82,15 +83,54 @@ DATABASE_URL = (
 )
 
 # ---------------------------------------------------------------------------
+# 时区工具 — 从系统配置读取，支持用户自行设置
+# ---------------------------------------------------------------------------
+_CN_TZ_CACHE = {"tz": None, "name": None}
+
+def _get_system_tz():
+    """获取系统配置的时区（带缓存），默认 Asia/Shanghai"""
+    tz_name = "Asia/Shanghai"
+    try:
+        db = SessionLocal()
+        try:
+            cfg = db.query(SystemConfig).filter(SystemConfig.config_key == "timezone").first()
+            if cfg and cfg.config_value and cfg.config_value.strip():
+                tz_name = cfg.config_value.strip()
+        finally:
+            db.close()
+    except Exception:
+        pass
+    # 缓存：仅在时区名变化时重新创建 ZoneInfo
+    if _CN_TZ_CACHE["name"] != tz_name:
+        try:
+            _CN_TZ_CACHE["tz"] = ZoneInfo(tz_name)
+            _CN_TZ_CACHE["name"] = tz_name
+        except Exception:
+            _CN_TZ_CACHE["tz"] = ZoneInfo("Asia/Shanghai")
+            _CN_TZ_CACHE["name"] = "Asia/Shanghai"
+    return _CN_TZ_CACHE["tz"]
+
+def _now_cn():
+    """返回当前系统时区时间（naive datetime）"""
+    return datetime.now(_get_system_tz()).replace(tzinfo=None)
+
+def _today_cn():
+    """返回当前系统时区日期"""
+    return datetime.now(_get_system_tz()).date()
+
+# ---------------------------------------------------------------------------
 # 工具函数
 # ---------------------------------------------------------------------------
 def parse_iso_date(date_str):
-    """安全解析 ISO 日期字符串，兼容 'Z' 后缀和 Python <3.11"""
+    """安全解析 ISO 日期字符串，统一转为系统时区（naive datetime）"""
     if not date_str:
         return None
     try:
         s = str(date_str).replace("Z", "+00:00")
-        return datetime.fromisoformat(s)
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(_get_system_tz()).replace(tzinfo=None)
+        return dt
     except (ValueError, TypeError):
         try:
             return datetime.strptime(str(date_str)[:19], "%Y-%m-%dT%H:%M:%S")
@@ -114,8 +154,8 @@ class User(Base):
     display_name = Column(String(64), default="", comment="显示名称")
     role = Column(SAEnum("admin", "tester"), nullable=False, default="tester", comment="角色")
     is_active = Column(Integer, default=1, comment="是否启用")
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=_now_cn)
+    updated_at = Column(DateTime, default=_now_cn, onupdate=_now_cn)
 
     def to_dict(self):
         return {
@@ -149,8 +189,8 @@ class Batch(Base):
     estimated_completion = Column(Date, default=None, comment="测试预计完成时间")
     actual_completion = Column(Date, default=None, comment="实际完成时间")
     completion_note = Column(Text, default="", comment="超期备注说明")
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=_now_cn)
+    updated_at = Column(DateTime, default=_now_cn, onupdate=_now_cn)
 
     devices = relationship("DeviceTest", back_populates="batch", lazy="dynamic")
 
@@ -205,7 +245,7 @@ class DeviceTest(Base):
     return_tracking = Column(String(100), comment="返厂单号")
     fault_return_courier = Column(String(50), default="", comment="返厂跟踪-快递公司")
     fault_return_tracking = Column(String(50), default="", comment="返厂跟踪-返厂单编号")
-    test_date = Column(DateTime, default=datetime.now, comment="测试时间")
+    test_date = Column(DateTime, default=_now_cn, comment="测试时间")
     operator = Column(String(50), comment="测试操作员")
     notes = Column(Text, comment="备注")
     flow_status = Column(String(20), default="在库", comment="流转状态")
@@ -219,8 +259,8 @@ class DeviceTest(Base):
     flow_notes = Column(Text, comment="流转备注")
     sort_order = Column(Integer, default=None, comment="排序序号")
     batch_id = Column(Integer, ForeignKey("batches.id"), nullable=True, comment="所属批次")
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=_now_cn)
+    updated_at = Column(DateTime, default=_now_cn, onupdate=_now_cn)
 
     batch = relationship("Batch", back_populates="devices")
 
@@ -256,7 +296,7 @@ class DeviceTest(Base):
             "flow_expected_return": self.flow_expected_return.isoformat() if self.flow_expected_return else "",
             "flow_actual_return": self.flow_actual_return.isoformat() if self.flow_actual_return else "",
             "flow_notes": self.flow_notes or "",
-            "flow_overdue": bool(self.flow_expected_return and self.flow_expected_return < date.today() and self.flow_status and self.flow_status != "在库"),
+            "flow_overdue": bool(self.flow_expected_return and self.flow_expected_return < _today_cn() and self.flow_status and self.flow_status != "在库"),
             "sort_order": self.sort_order,
             "batch_id": self.batch_id,
             "batch_no": self.batch.batch_no if self.batch else "",
@@ -272,8 +312,8 @@ class TestStandard(Base):
     name = Column(String(128), unique=True, nullable=False, comment="标准名称")
     description = Column(Text, default="", comment="标准描述")
     metrics = Column(Text, default="[]", comment="指标列表 JSON")
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=_now_cn)
+    updated_at = Column(DateTime, default=_now_cn, onupdate=_now_cn)
 
     def to_dict(self):
         return {
@@ -297,8 +337,8 @@ class DeviceTestResult(Base):
     expected_value = Column(String(64), nullable=False, default="", comment="期望值")
     pass_ = Column("pass", Integer, nullable=False, default=0, comment="是否通过 0/1")
     notes = Column(Text, default=None, comment="备注")
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=_now_cn)
+    updated_at = Column(DateTime, default=_now_cn, onupdate=_now_cn)
 
     device = relationship("DeviceTest", backref="test_results")
     standard = relationship("TestStandard", backref="test_results")
@@ -324,7 +364,7 @@ class OperatorHistory(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), unique=True, nullable=False, comment="操作员名称")
     use_count = Column(Integer, default=0, comment="使用次数")
-    last_used = Column(DateTime, default=datetime.now, comment="最近使用时间")
+    last_used = Column(DateTime, default=_now_cn, comment="最近使用时间")
 
     def to_dict(self):
         return {
@@ -341,8 +381,8 @@ class SystemConfig(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     config_key = Column(String(128), unique=True, nullable=False, comment="配置键")
     config_value = Column(Text, default="", comment="配置值")
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=_now_cn)
+    updated_at = Column(DateTime, default=_now_cn, onupdate=_now_cn)
 
     def to_dict(self):
         return {
@@ -363,8 +403,8 @@ class ReturnRecord(Base):
     courier = Column(String(50), default="", comment="快递公司")
     status = Column(String(20), default="进行中", comment="返厂状态：进行中/完成/取消")
     device_count = Column(Integer, default=0, comment="关联设备数")
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=_now_cn)
+    updated_at = Column(DateTime, default=_now_cn, onupdate=_now_cn)
 
     devices = relationship("DeviceReturnRecord", back_populates="return_record", lazy="dynamic")
 
@@ -409,8 +449,8 @@ class TestCommand(Base):
     category = Column(String(32), default="其他", comment="分类：网络测试/硬件检测/系统命令/诊断调试/其他")
     notes = Column(Text, default="", comment="说明/注意事项")
     sort_order = Column(Integer, default=0, comment="排序")
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=_now_cn)
+    updated_at = Column(DateTime, default=_now_cn, onupdate=_now_cn)
 
     def to_dict(self):
         return {
@@ -431,7 +471,7 @@ class UserCommandPin(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="用户ID")
     command_id = Column(Integer, ForeignKey("test_commands.id"), nullable=False, comment="命令ID")
     sort_order = Column(Integer, default=0, comment="置顶排序")
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=_now_cn)
 
     __table_args__ = (
         UniqueConstraint('user_id', 'command_id', name='uq_user_command_pin'),
@@ -740,7 +780,7 @@ def generate_batch_no():
             SystemConfig.config_key == "batch_code_prefix"
         ).first()
         prefix = prefix_config.config_value.strip() if prefix_config and prefix_config.config_value.strip() else "BT"
-        today_str = datetime.now().strftime("%Y%m%d")
+        today_str = _now_cn().strftime("%Y%m%d")
         date_prefix = f"{prefix}{today_str}"
         last = db.query(Batch).filter(Batch.batch_no.like(f"{date_prefix}%")).order_by(desc(Batch.batch_no)).first()
         if last and last.batch_no.startswith(date_prefix):
@@ -783,7 +823,7 @@ def create_batch():
                 SystemConfig.config_key == "batch_code_prefix"
             ).first()
             prefix = prefix_config.config_value.strip() if prefix_config and prefix_config.config_value.strip() else "BT"
-            today_str = datetime.now().strftime("%Y%m%d")
+            today_str = _now_cn().strftime("%Y%m%d")
             date_prefix = f"{prefix}{today_str}"
             last = db.query(Batch).filter(Batch.batch_no.like(f"{date_prefix}%")).order_by(desc(Batch.batch_no)).first()
             if last and last.batch_no.startswith(date_prefix):
@@ -1059,7 +1099,7 @@ def update_batch(batch_id):
         if "metrics" in data:
             batch.metrics = json.dumps(data["metrics"], ensure_ascii=False)
 
-        batch.updated_at = datetime.now()
+        batch.updated_at = _now_cn()
         db.commit()
         db.refresh(batch)
         return api_response(data=batch.to_dict(), message="批次更新成功")
@@ -1121,13 +1161,13 @@ def update_batch_status(batch_id):
                 try:
                     batch.started_at = datetime.fromisoformat(started_at)
                 except (ValueError, TypeError):
-                    batch.started_at = datetime.now()
+                    batch.started_at = _now_cn()
             else:
-                batch.started_at = datetime.now()
+                batch.started_at = _now_cn()
 
         # 完成：自动填入 actual_completion
         if new_status == "completed":
-            now = datetime.now()
+            now = _now_cn()
             actual_completion = data.get("actual_completion")
             if actual_completion:
                 try:
@@ -1141,7 +1181,7 @@ def update_batch_status(batch_id):
                 batch.started_at = now
 
         batch.status = new_status
-        batch.updated_at = datetime.now()
+        batch.updated_at = _now_cn()
         db.commit()
         db.refresh(batch)
         return api_response(data=batch.to_dict(), message=f"批次状态已更新为「{new_status}」")
@@ -1407,7 +1447,7 @@ def create_batch_device(batch_id):
             fault_disposition=fault_disposition_val,
             return_date=datetime.strptime(data["return_date"], "%Y-%m-%d").date() if data.get("return_date") else None,
             return_tracking=(data.get("return_tracking") or "").strip() or None,
-            test_date=parse_iso_date(data.get("test_date")) or datetime.now(),
+            test_date=parse_iso_date(data.get("test_date")) or _now_cn(),
             operator=(data.get("operator") or "").strip() or None,
             notes=(data.get("notes") or "").strip() or None,
             sort_order=sort_order,
@@ -1581,7 +1621,7 @@ def update_standard(standard_id):
             s.description = data["description"].strip()
         if "metrics" in data:
             s.metrics = json.dumps(data["metrics"], ensure_ascii=False)
-        s.updated_at = datetime.now()
+        s.updated_at = _now_cn()
         db.commit()
         db.refresh(s)
         return api_response(data=s.to_dict(), message="标准更新成功")
@@ -1649,6 +1689,13 @@ def health_check():
         return api_response(data={"db": "connected", "status": "ok"})
     except Exception as e:
         return api_response(success=False, message=f"数据库连接失败: {str(e)}", code=500)
+
+
+@app.route("/api/timezone", methods=["GET"])
+def get_timezone():
+    """返回当前系统时区配置（无需登录）"""
+    tz = _get_system_tz()
+    return api_response(data={"timezone": _CN_TZ_CACHE["name"]})
 
 
 # ===== 常用命令 API =====
@@ -1742,7 +1789,7 @@ def update_command(cmd_id):
                 tc.sort_order = int(data["sort_order"])
             except Exception:
                 pass
-        tc.updated_at = datetime.now()
+        tc.updated_at = _now_cn()
         db.commit()
         return api_response(data=tc.to_dict(), message="更新成功")
     except Exception as e:
@@ -1987,7 +2034,7 @@ def create_device():
             fault_disposition=fault_disposition_val,
             return_date=datetime.strptime(data["return_date"], "%Y-%m-%d").date() if data.get("return_date") else None,
             return_tracking=(data.get("return_tracking") or "").strip() or None,
-            test_date=parse_iso_date(data.get("test_date")) or datetime.now(),
+            test_date=parse_iso_date(data.get("test_date")) or _now_cn(),
             operator=(data.get("operator") or "").strip() or None,
             notes=(data.get("notes") or "").strip() or None,
             batch_id=batch_id,
@@ -2066,7 +2113,7 @@ def update_device(device_id):
 
         # 标记返还时自动填写实际返还日期
         if "flow_status" in data and data["flow_status"] == "在库" and not device.flow_actual_return:
-            device.flow_actual_return = date.today()
+            device.flow_actual_return = _today_cn()
 
         # 设备编号：用户填写8位则使用，否则从板卡MAC生成
         if "device_code" in data:
@@ -2186,7 +2233,7 @@ def update_device_flow(device_id):
 
         # 标记返还时自动填写实际返还日期
         if data.get("flow_status") == "在库" and not device.flow_actual_return:
-            device.flow_actual_return = date.today()
+            device.flow_actual_return = _today_cn()
 
         db.commit()
         return api_response(data=device.to_dict(), message="流转信息已更新")
@@ -2211,7 +2258,7 @@ def batch_update_flow():
     try:
         update_data = {"flow_status": flow_status}
         if flow_status == "在库":
-            update_data["flow_actual_return"] = date.today()
+            update_data["flow_actual_return"] = _today_cn()
         updated = db.query(DeviceTest).filter(DeviceTest.id.in_(ids)).update(update_data, synchronize_session=False)
         db.commit()
         return api_response(data={"updated": updated}, message=f"已更新 {updated} 台设备流转状态")
@@ -2228,7 +2275,7 @@ def flow_statistics():
     """获取流转统计"""
     db = next(get_db())
     try:
-        today = date.today()
+        today = _today_cn()
         in_stock = db.query(func.count(DeviceTest.id)).filter(DeviceTest.flow_status == "在库").scalar() or 0
         outgoing = db.query(func.count(DeviceTest.id)).filter(
             DeviceTest.flow_status != "在库", DeviceTest.flow_status.isnot(None), DeviceTest.flow_status != ""
@@ -2501,7 +2548,7 @@ def statistics_overview():
 
         trend = []
         for i in range(29, -1, -1):
-            d = date.today() - timedelta(days=i)
+            d = _today_cn() - timedelta(days=i)
             day_total = db.query(func.count(DeviceTest.id)).filter(
                 func.date(DeviceTest.test_date) == d
             ).scalar()
@@ -2644,7 +2691,7 @@ def statistics_heatmap():
                 func.hour(DeviceTest.test_date).label("hour"),
                 func.count(DeviceTest.id).label("count"),
             )
-            .filter(DeviceTest.test_date >= date.today() - timedelta(days=days))
+            .filter(DeviceTest.test_date >= _today_cn() - timedelta(days=days))
             .group_by(func.date(DeviceTest.test_date), func.hour(DeviceTest.test_date))
             .order_by(func.date(DeviceTest.test_date), func.hour(DeviceTest.test_date))
             .all()
@@ -2922,7 +2969,7 @@ def _build_markdown(devices):
     lines = [
         "# 硬件测试记录报告",
         "",
-        f"> 导出时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"> 导出时间: {_now_cn().strftime('%Y-%m-%d %H:%M:%S')}",
         f"> 记录总数: {len(devices)}",
         "",
         "## 统计概览",
@@ -2978,7 +3025,7 @@ def export_excel():
             output,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name=f"hardware_test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            download_name=f"hardware_test_report_{_now_cn().strftime('%Y%m%d_%H%M%S')}.xlsx",
         )
     except Exception as e:
         return api_response(success=False, message=str(e), code=500)
@@ -3005,7 +3052,7 @@ def export_batch_excel(batch_id):
             output,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name=f"{batch.batch_no}_测试报告_{date.today().isoformat()}.xlsx",
+            download_name=f"{batch.batch_no}_测试报告_{_today_cn().isoformat()}.xlsx",
         )
     finally:
         db.close()
@@ -3109,7 +3156,7 @@ def export_excel_custom():
         output,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
-        download_name=f"设备列表_{date.today().isoformat()}.xlsx",
+        download_name=f"设备列表_{_today_cn().isoformat()}.xlsx",
     )
 
 @app.route("/api/export/markdown", methods=["GET"])
@@ -3126,7 +3173,7 @@ def export_markdown():
             output,
             mimetype="text/markdown",
             as_attachment=True,
-            download_name=f"hardware_test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+            download_name=f"hardware_test_report_{_now_cn().strftime('%Y%m%d_%H%M%S')}.md",
         )
     except Exception as e:
         return api_response(success=False, message=str(e), code=500)
@@ -3144,7 +3191,7 @@ def _export_device_tests_to_excel(records, filename_prefix="exports"):
         output,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
-        download_name=f"{filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        download_name=f"{filename_prefix}_{_now_cn().strftime('%Y%m%d_%H%M%S')}.xlsx",
     )
 
 def _export_return_records_to_excel(records, filename_prefix="return_records"):
@@ -3209,7 +3256,7 @@ def _export_return_records_to_excel(records, filename_prefix="return_records"):
         output,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
-        download_name=f"{filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        download_name=f"{filename_prefix}_{_now_cn().strftime('%Y%m%d_%H%M%S')}.xlsx",
     )
 
 
@@ -3404,9 +3451,9 @@ def record_operator():
         operator = db.query(OperatorHistory).filter(OperatorHistory.name == name).first()
         if operator:
             operator.use_count = (operator.use_count or 0) + 1
-            operator.last_used = datetime.now()
+            operator.last_used = _now_cn()
         else:
-            operator = OperatorHistory(name=name, use_count=1, last_used=datetime.now())
+            operator = OperatorHistory(name=name, use_count=1, last_used=_now_cn())
             db.add(operator)
         db.commit()
         db.refresh(operator)
@@ -3453,7 +3500,7 @@ def download_template():
     example_row = [
         "留空自动生成", "00:1A:2B:3C:4D:5E", "00:1A:2B:3C:4D:5F", "192.168.1.100", "1=小周天/2=大周天/3=周天/4=智瞳", "正常",
         "", "",
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "操作员姓名", "",
+        _now_cn().strftime("%Y-%m-%d %H:%M:%S"), "操作员姓名", "",
     ]
     for col, val in enumerate(example_row, 1):
         cell = ws.cell(row=2, column=col, value=val)
@@ -3473,7 +3520,7 @@ def download_template():
         output,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
-        download_name=f"batch_import_template_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        download_name=f"batch_import_template_{_now_cn().strftime('%Y%m%d')}.xlsx",
     )
 
 
@@ -3608,7 +3655,7 @@ def update_configs():
             existing = db.query(SystemConfig).filter(SystemConfig.config_key == key).first()
             if existing:
                 existing.config_value = value
-                existing.updated_at = datetime.now()
+                existing.updated_at = _now_cn()
             else:
                 db.add(SystemConfig(config_key=key, config_value=value))
         db.commit()
@@ -3872,7 +3919,7 @@ def create_return_record():
                 SystemConfig.config_key == "return_code_prefix"
             ).first()
             prefix = prefix_config.config_value.strip() if prefix_config and prefix_config.config_value.strip() else "RT"
-            today_str = datetime.now().strftime("%Y%m%d")
+            today_str = _now_cn().strftime("%Y%m%d")
             code_prefix = f"{prefix}{today_str}"
             last_record = db.query(ReturnRecord).filter(
                 ReturnRecord.return_code.like(f"{code_prefix}%")
@@ -4172,6 +4219,17 @@ if __name__ == "__main__":
         print("[INFO] system_configs 表已创建（如不存在）")
     except Exception as e:
         print(f"[WARN] system_configs 表创建失败: {e}")
+
+    # 迁移：插入默认时区配置（如果不存在）
+    try:
+        _db = SessionLocal()
+        if not _db.query(SystemConfig).filter(SystemConfig.config_key == "timezone").first():
+            _db.add(SystemConfig(config_key="timezone", config_value="Asia/Shanghai"))
+            _db.commit()
+            print("[INFO] 已插入默认时区配置: Asia/Shanghai")
+        _db.close()
+    except Exception as e:
+        print(f"[WARN] 默认时区配置插入失败: {e}")
 
     # 迁移：为 batches 表添加新字段（如果不存在）
     with engine.connect() as conn:
