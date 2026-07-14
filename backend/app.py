@@ -543,12 +543,50 @@ def normalize_mac(raw):
     return s
 
 
+def _resolve_device_code_and_mac(data):
+    """根据 device_code 和 board_mac 的输入，统一解析为 (board_mac, device_code_val)。
+    规则：
+    - 12位十六进制 device_code → 转换为 MAC 地址作为 board_mac
+    - 8位 device_code → 以设备编号为主，board_mac 由 device_code 补零生成
+    - board_mac 有值但 device_code 为空 → 从 board_mac 生成 device_code
+    """
+    user_device_code = (data.get("device_code") or "").strip()
+    board_mac_raw = (data.get("board_mac") or "").strip()
+
+    if user_device_code and len(user_device_code) == 12 and all(c in '0123456789ABCDEFabcdef' for c in user_device_code):
+        # 12位十六进制 device_code → 转换为 MAC 地址
+        board_mac = normalize_mac(user_device_code)
+        device_code_val = user_device_code.upper()
+    elif user_device_code and len(user_device_code) == 8 and user_device_code.isalnum():
+        # 8位 device_code → 补零生成 MAC 地址
+        device_code_val = user_device_code.upper()
+        padded = device_code_val + "0000"
+        board_mac = ':'.join(padded[i:i+2] for i in range(0, 12, 2))
+    elif board_mac_raw:
+        # board_mac 有值但 device_code 为空 → 从 board_mac 生成
+        board_mac = normalize_mac(board_mac_raw)
+        device_code_val = board_mac.replace(":", "").replace("-", "").upper()
+    else:
+        board_mac = normalize_mac(board_mac_raw) if board_mac_raw else ""
+        device_code_val = user_device_code.upper() if user_device_code else ""
+
+    return board_mac, device_code_val
+
+
 def validate_device_data(data, is_update=False):
     errors = []
     if not is_update:
-        mac = normalize_mac(data.get("board_mac") or "")
-        if not mac or not MAC_PATTERN.match(mac):
-            errors.append("板卡MAC地址格式无效 (应为 XX:XX:XX:XX:XX:XX)")
+        user_device_code = (data.get("device_code") or "").strip()
+        board_mac_raw = (data.get("board_mac") or "").strip()
+        # 有设备编号（8位或12位十六进制）时，物理MAC可为空
+        has_valid_device_code = (
+            (user_device_code and len(user_device_code) == 8 and user_device_code.isalnum()) or
+            (user_device_code and len(user_device_code) == 12 and all(c in '0123456789ABCDEFabcdef' for c in user_device_code))
+        )
+        if not has_valid_device_code:
+            mac = normalize_mac(board_mac_raw or "")
+            if not mac or not MAC_PATTERN.match(mac):
+                errors.append("板卡MAC地址格式无效 (应为 XX:XX:XX:XX:XX:XX)，或填写8位/12位设备编号")
         wmac = normalize_mac(data.get("wireless_mac") or "")
         if wmac and not MAC_PATTERN.match(wmac):
             errors.append("无线MAC地址格式无效 (应为 XX:XX:XX:XX:XX:XX)")
@@ -1416,7 +1454,7 @@ def create_batch_device(batch_id):
             sort_order = (max_seq + 1) if max_seq is not None else 1
 
         # 批次内唯一性检查：同批次中板卡MAC+无线MAC不可重复（仅当无线MAC非空时）
-        board_mac = normalize_mac(data["board_mac"])
+        board_mac, device_code_val = _resolve_device_code_and_mac(data)
         wireless_mac_raw = data["wireless_mac"].strip()
         wireless_mac = normalize_mac(wireless_mac_raw) if wireless_mac_raw else None
         ip_addr = data["ip_address"].strip() or None
@@ -1431,11 +1469,6 @@ def create_batch_device(batch_id):
 
         status_val = data.get("status", "normal")
         fault_disposition_val = (data.get("fault_disposition") or 'pending') if status_val == "fault" else (data.get("fault_disposition") or '')
-        user_device_code = (data.get("device_code") or "").strip()
-        if user_device_code and len(user_device_code) == 8 and user_device_code.isalnum():
-            device_code_val = user_device_code.upper()
-        else:
-            device_code_val = board_mac.replace(":", "").replace("-", "").upper()
         device = DeviceTest(
             board_mac=board_mac,
             device_code=device_code_val,
@@ -1947,7 +1980,11 @@ def list_devices():
                 query = query.filter(DeviceTest.flow_status == flow_status)
 
         sort_col = getattr(DeviceTest, sort_by, DeviceTest.test_date)
-        query = query.order_by(desc(sort_col) if sort_order == "desc" else asc(sort_col))
+        # 默认排序优先按 sort_order 升序（null 排最后），再按指定字段排序
+        if sort_by and sort_by not in ('id', 'sort_order'):
+            query = query.order_by(desc(sort_col) if sort_order == "desc" else asc(sort_col))
+        else:
+            query = query.order_by(DeviceTest.sort_order.is_(None), DeviceTest.sort_order.asc(), DeviceTest.id.asc())
 
         total = query.count()
         devices = query.offset((page - 1) * per_page).limit(per_page).all()
@@ -2001,7 +2038,7 @@ def create_device():
             except (ValueError, TypeError):
                 batch_id = None
 
-        board_mac = normalize_mac(data["board_mac"])
+        board_mac, device_code_val = _resolve_device_code_and_mac(data)
         wireless_mac_raw = data["wireless_mac"].strip()
         wireless_mac = normalize_mac(wireless_mac_raw) if wireless_mac_raw else None
         ip_addr = data["ip_address"].strip() or None
@@ -2018,11 +2055,6 @@ def create_device():
 
         status_val = data.get("status", "normal")
         fault_disposition_val = (data.get("fault_disposition") or 'pending') if status_val == "fault" else (data.get("fault_disposition") or '')
-        user_device_code = (data.get("device_code") or "").strip()
-        if user_device_code and len(user_device_code) == 8 and user_device_code.isalnum():
-            device_code_val = user_device_code.upper()
-        else:
-            device_code_val = board_mac.replace(":", "").replace("-", "").upper()
         device = DeviceTest(
             board_mac=board_mac,
             device_code=device_code_val,
@@ -2115,10 +2147,15 @@ def update_device(device_id):
         if "flow_status" in data and data["flow_status"] == "在库" and not device.flow_actual_return:
             device.flow_actual_return = _today_cn()
 
-        # 设备编号：用户填写8位则使用，否则从板卡MAC生成
+        # 设备编号：支持8位和12位，12位自动转换为MAC地址
         if "device_code" in data:
             custom_code = (data["device_code"] or "").strip()
-            if custom_code and len(custom_code) == 8 and custom_code.isalnum():
+            if custom_code and len(custom_code) == 12 and all(c in '0123456789ABCDEFabcdef' for c in custom_code):
+                # 12位十六进制设备编号 → 转换为MAC地址
+                device.device_code = custom_code.upper()
+                device.board_mac = normalize_mac(custom_code)
+            elif custom_code and len(custom_code) == 8 and custom_code.isalnum():
+                # 8位设备编号
                 device.device_code = custom_code.upper()
             elif "board_mac" in data:
                 device.device_code = device.board_mac.replace(":", "").replace("-", "").upper() if device.board_mac else ""
@@ -2334,7 +2371,7 @@ def batch_create():
             if errors:
                 results["failed"].append({"index": i, "mac": item.get("board_mac", "?"), "errors": errors})
                 continue
-            bm = normalize_mac(item["board_mac"])
+            bm, device_code_val = _resolve_device_code_and_mac(item)
             wm_raw = item["wireless_mac"].strip()
             wm = normalize_mac(wm_raw) if wm_raw else None
             ip_raw = item["ip_address"].strip()
@@ -2351,6 +2388,7 @@ def batch_create():
                 fault_disposition_val = (item.get("fault_disposition") or 'pending') if item_status == "fault" else (item.get("fault_disposition") or '')
                 device = DeviceTest(
                     board_mac=bm,
+                    device_code=device_code_val,
                     wireless_mac=wm,
                     ip_address=ip_addr,
                     status=item_status,
@@ -3498,7 +3536,7 @@ def download_template():
         cell.border = thin_border
 
     example_row = [
-        "留空自动生成", "00:1A:2B:3C:4D:5E", "00:1A:2B:3C:4D:5F", "192.168.1.100", "1=小周天/2=大周天/3=周天/4=智瞳", "正常",
+        "8位或12位(12位自动转MAC)", "00:1A:2B:3C:4D:5E", "00:1A:2B:3C:4D:5F", "192.168.1.100", "1=小周天/2=大周天/3=周天/4=智瞳", "正常/故障",
         "", "",
         _now_cn().strftime("%Y-%m-%d %H:%M:%S"), "操作员姓名", "",
     ]
@@ -3507,7 +3545,21 @@ def download_template():
         cell.border = thin_border
         cell.alignment = Alignment(vertical="center")
 
-    col_widths = [14, 18, 18, 16, 24, 8, 30, 12, 20, 14, 18]
+    # 提示行
+    hint_font = Font(name="Helvetica Neue", color="888888", size=9, italic=True)
+    hint_row = [
+        "8位字母数字 或 12位十六进制", "格式: XX:XX:XX:XX:XX:XX", "格式: XX:XX:XX:XX:XX:XX", "格式: x.x.x.x",
+        "数字1-4或中文名称", "正常 或 故障",
+        "故障时必填", "正常时可不填",
+        "格式: YYYY-MM-DD HH:MM:SS", "操作员姓名", "",
+    ]
+    for col, val in enumerate(hint_row, 1):
+        cell = ws.cell(row=3, column=col, value=val)
+        cell.font = hint_font
+        cell.border = thin_border
+        cell.alignment = Alignment(vertical="center")
+
+    col_widths = [26, 18, 18, 16, 24, 10, 30, 12, 22, 14, 18]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 

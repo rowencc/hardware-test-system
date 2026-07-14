@@ -3216,7 +3216,7 @@
                             <textarea id="batchData" class="form-control" rows="10" 
                                       placeholder='[
   {
-    "board_mac": "00:1A:2B:3C:4D:5E",
+    "device_code": "CA8913A6",
     "wireless_mac": "00:1A:2B:3C:4D:5F",
     "ip_address": "192.168.1.100",
     "status": "normal",
@@ -3224,7 +3224,7 @@
   }
 ]'></textarea>
                             <div class="form-hint">
-                                支持 JSON 数组格式，每项包含 board_mac, wireless_mac, ip_address, status, operator 等字段
+                                支持 JSON 数组格式，每项包含 device_code(8位/12位) 或 board_mac, wireless_mac, ip_address, status, operator 等字段
                             </div>
                         </div>
                         
@@ -3254,6 +3254,9 @@
                                 <button type="button" class="search-clear-btn" id="searchInputClear" title="清空搜索">&times;</button>
                             </div>
                             <div class="filters">
+                                <select id="batchFilter" class="form-control" style="min-width:120px;">
+                                    <option value="">所有批次</option>
+                                </select>
                                 <select id="statusFilter" class="form-control">
                                     <option value="">所有状态</option>
                                     <option value="normal">正常</option>
@@ -3287,7 +3290,8 @@
                             <thead>
                                 <tr>
                                     <th class="col-check"><input type="checkbox" class="select-all-checkbox" data-table="test-records-table"></th>
-                                    <th class="sortable" data-sort="id" data-dir="desc">ID <span class="sort-arrow">▼</span></th>
+                                    <th class="sortable" data-sort="id" data-dir="none">ID <span class="sort-arrow"></span></th>
+                                    <th class="sortable" data-sort="sort_order" data-dir="asc">序号 <span class="sort-arrow">▲</span></th>
                                     <th>设备编号</th>
                                     <th>设备类型</th>
                                     <th>流转</th>
@@ -4259,8 +4263,8 @@
         let currentPage = 1;
         let totalPages = 1;
         let devicesPerPage = 20;
-        let devicesSortBy = 'id';
-        let devicesSortOrder = 'desc';
+        let devicesSortBy = 'sort_order';
+        let devicesSortOrder = 'asc';
         let currentDeviceId = null;
         let devicesCache = [];
         let statisticsCache = null;
@@ -4530,6 +4534,26 @@
             document.getElementById('statusFilter').addEventListener('change', loadDevices);
             document.getElementById('dispositionFilter').addEventListener('change', loadDevices);
             document.getElementById('flowFilter').addEventListener('change', loadDevices);
+            document.getElementById('batchFilter').addEventListener('change', loadDevices);
+
+            // 加载批次列表用于筛选下拉框
+            async function loadBatchFilterOptions() {
+                try {
+                    const data = await apiCall('/batches?per_page=500');
+                    const batches = data.items || [];
+                    const sel = document.getElementById('batchFilter');
+                    const currentVal = sel.value;
+                    sel.innerHTML = '<option value="">所有批次</option>';
+                    batches.forEach(b => {
+                        const opt = document.createElement('option');
+                        opt.value = b.id;
+                        opt.textContent = b.batch_no || `批次#${b.id}`;
+                        sel.appendChild(opt);
+                    });
+                    sel.value = currentVal;
+                } catch(e) {}
+            }
+            loadBatchFilterOptions();
             
             // 导出按钮
             document.getElementById('exportExcel').addEventListener('click', function() {
@@ -5141,12 +5165,14 @@
                 const status = document.getElementById('statusFilter').value;
                 const disposition = document.getElementById('dispositionFilter').value;
                 const flowStatus = document.getElementById('flowFilter').value;
+                const batchId = document.getElementById('batchFilter').value;
 
                 let endpoint = `/devices?page=${page}&per_page=${devicesPerPage}&sort_by=${devicesSortBy}&sort_order=${devicesSortOrder}`;
                 if (search) endpoint += `&search=${encodeURIComponent(search)}`;
                 if (status) endpoint += `&status=${status}`;
                 if (disposition) endpoint += `&disposition=${disposition}`;
                 if (flowStatus) endpoint += `&flow_status=${flowStatus}`;
+                if (batchId) endpoint += `&batch_id=${batchId}`;
                 
                 const data = await apiCall(endpoint);
                 devicesCache = data.items;
@@ -5200,7 +5226,7 @@
             if (devices.length === 0) {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td colspan="13" class="empty-table">
+                    <td colspan="14" class="empty-table">
                         <i class="fas fa-search"></i>
                         <p>未找到匹配的设备记录</p>
                     </td>
@@ -5257,6 +5283,10 @@
                 row.innerHTML = `
                     <td class="col-check"><input type="checkbox" class="row-checkbox" data-id="${device.id}" data-table="test-records-table"></td>
                     <td>${device.id}</td>
+                    <td class="sort-order-cell" data-id="${device.id}" data-value="${device.sort_order || ''}" title="点击编辑序号">
+                        <span class="sort-order-display">${device.sort_order || '--'}</span>
+                        <input type="number" class="sort-order-input" value="${device.sort_order || ''}" min="1" style="display:none;width:60px;padding:2px 4px;font-size:12px;">
+                    </td>
                     <td><code>${device.device_code || '--'}</code></td>
                     <td>${deviceTypeText}</td>
                     <td><span class="flow-badge ${flowClass}">${flowIcon} ${flowStatus}${device.flow_overdue ? ' ⚠' : ''}</span>${flowTooltip}</td>
@@ -5311,8 +5341,59 @@
                 });
             });
 
+            // 序号内联编辑
+            document.querySelectorAll('.sort-order-cell').forEach(cell => {
+                cell.addEventListener('click', function(e) {
+                    if (e.target.classList.contains('sort-order-input')) return;
+                    const display = this.querySelector('.sort-order-display');
+                    const input = this.querySelector('.sort-order-input');
+                    display.style.display = 'none';
+                    input.style.display = 'inline-block';
+                    input.focus();
+                    input.select();
+                });
+                const input = cell.querySelector('.sort-order-input');
+                input.addEventListener('blur', function() {
+                    saveSortOrder(cell, this);
+                });
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') { this.blur(); }
+                    if (e.key === 'Escape') {
+                        this.value = cell.dataset.value;
+                        this.blur();
+                    }
+                });
+            });
+
         }
         
+        // 保存序号
+        async function saveSortOrder(cell, input) {
+            const deviceId = cell.dataset.id;
+            const oldValue = cell.dataset.value;
+            const newValue = input.value.trim();
+            const display = cell.querySelector('.sort-order-display');
+
+            if (newValue === oldValue || (newValue === '' && oldValue === '')) {
+                display.style.display = '';
+                input.style.display = 'none';
+                return;
+            }
+
+            try {
+                await apiCall(`/devices/${deviceId}`, 'PUT', { sort_order: newValue ? parseInt(newValue) : null });
+                cell.dataset.value = newValue;
+                display.textContent = newValue || '--';
+                display.style.display = '';
+                input.style.display = 'none';
+                showNotification('序号已更新', 'success');
+            } catch (e) {
+                input.value = oldValue;
+                display.style.display = '';
+                input.style.display = 'none';
+            }
+        }
+
         // ============ 系统配置 ============
         async function loadSettingsConfig() {
             try {
@@ -6115,10 +6196,10 @@
                                    value="${device.sort_order || ''}" placeholder="留空自动计算" min="1">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">设备编号 <span style="font-weight:400;font-size:11px;color:var(--color-text-3);">（8位）</span></label>
+                            <label class="form-label">设备编号 <span style="font-weight:400;font-size:11px;color:var(--color-text-3);">（8位或12位）</span></label>
                             <input type="text" name="device_code" class="form-control"
-                                   value="${device.device_code || ''}" maxlength="8"
-                                   placeholder="8位字母数字" style="text-transform:uppercase;font-family:var(--font-mono);">
+                                   value="${device.device_code || ''}" maxlength="12"
+                                   placeholder="8位或12位" style="text-transform:uppercase;font-family:var(--font-mono);">
                         </div>
                         <div class="form-group">
                             <label class="form-label">设备类型</label>
@@ -6943,7 +7024,8 @@
                 const search = document.getElementById('searchInput').value;
                 const status = document.getElementById('statusFilter').value;
                 const disposition = document.getElementById('dispositionFilter').value;
-                const scopeText = (search || status || disposition) ? '当前筛选' : '全部';
+                const batchId = document.getElementById('batchFilter').value;
+                const scopeText = (search || status || disposition || batchId) ? '当前筛选' : '全部';
                 if (dedupOn && total !== filtered) {
                     hint.innerHTML = `<i class="fas fa-filter"></i> ${scopeText}共 <strong>${total}</strong> 台，去重后 <strong>${filtered}</strong> 台`;
                 } else {
@@ -6971,10 +7053,12 @@
                     const search = document.getElementById('searchInput').value;
                     const status = document.getElementById('statusFilter').value;
                     const disposition = document.getElementById('dispositionFilter').value;
+                    const batchId = document.getElementById('batchFilter').value;
                     let endpoint = `${API_BASE_URL}/devices?per_page=1000`;
                     if (search) endpoint += `&search=${encodeURIComponent(search)}`;
                     if (status) endpoint += `&status=${status}`;
                     if (disposition) endpoint += `&disposition=${disposition}`;
+                    if (batchId) endpoint += `&batch_id=${batchId}`;
                     const res = await fetch(endpoint, { credentials: 'include' });
                     const json = await res.json();
                     currentExportDevices = json.data?.items || json.data || json.items || json || [];
@@ -7293,8 +7377,8 @@
                         </div>
                         <div class="form-row">
                             <div class="form-group" style="flex:1;">
-                                <label class="form-label" for="adDeviceCode">设备编号 <span style="font-weight:400;font-size:11px;color:var(--color-text-3);">（选填，8位自动生成）</span></label>
-                                <input type="text" id="adDeviceCode" class="form-control" placeholder="留空自动生成" maxlength="8" style="text-transform:uppercase;">
+                                <label class="form-label" for="adDeviceCode">设备编号 <span style="font-weight:400;font-size:11px;color:var(--color-text-3);">（选填，8位自动生成/12位自动转MAC）</span></label>
+                                <input type="text" id="adDeviceCode" class="form-control" placeholder="8位或12位" maxlength="12" style="text-transform:uppercase;">
                             </div>
                             <div class="form-group" style="flex:1;">
                                 <label class="form-label" for="adDeviceType">设备类型</label>
@@ -7309,9 +7393,9 @@
                         </div>
                         <div class="form-row">
                             <div class="form-group" style="flex:1;">
-                                <label class="form-label" for="adBoardMac">物理MAC <span class="required">*</span></label>
+                                <label class="form-label" for="adBoardMac">物理MAC <span class="required" id="adBoardMacReq">*</span></label>
                                 <div style="display:flex;align-items:center;">
-                                    <input type="text" id="adBoardMac" class="form-control" placeholder="00:1A:2B:3C:4D:5E" required style="flex:1;">
+                                    <input type="text" id="adBoardMac" class="form-control" placeholder="00:1A:2B:3C:4D:5E" style="flex:1;">
                                     <span class="custom-number-badge" id="adCustomNumberBadge" style="display:none;">
                                         <i class="fas fa-tag"></i> 自定义编号模式
                                     </span>
@@ -8507,6 +8591,23 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             // empty: do nothing, keep current state
         });
 
+        // 设备编号输入时动态更新物理MAC必填状态
+        document.getElementById('adDeviceCode').addEventListener('input', function() {
+            const val = this.value.trim();
+            const macReq = document.getElementById('adBoardMacReq');
+            const boardMac = document.getElementById('adBoardMac');
+            // 8位或12位设备编号时，物理MAC可为空
+            const is8 = val.length === 8 && /^[A-Za-z0-9]{8}$/.test(val);
+            const is12 = val.length === 12 && /^[0-9A-Fa-f]{12}$/.test(val);
+            if (is8 || is12) {
+                macReq.style.display = 'none';
+                boardMac.removeAttribute('required');
+            } else {
+                macReq.style.display = '';
+                boardMac.setAttribute('required', '');
+            }
+        });
+
         // Single device save
         document.getElementById('saveSingleDevice').addEventListener('click', async function() {
             const batchId = document.getElementById('adBatchId').value;
@@ -8546,9 +8647,30 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             // MAC address validation
             const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
             const isCustomNumber = board_mac && !macRegex.test(board_mac);
-            if (!board_mac) { showFieldError('adBoardMac', '请输入物理MAC地址或自定义编号'); }
 
-            if (isCustomNumber) {
+            // 设备编号和物理MAC互相转换
+            let resolvedBoardMac = board_mac;
+            const isHex12 = device_code.length === 12 && /^[0-9A-Fa-f]{12}$/.test(device_code);
+            const isAlnum8 = device_code.length === 8 && /^[A-Za-z0-9]{8}$/.test(device_code);
+
+            if (isHex12) {
+                // 12位十六进制设备编号 → 转换为MAC地址
+                resolvedBoardMac = device_code.replace(/(.{2})(?=.)/g, '$1:').toUpperCase();
+            } else if (isAlnum8 && !board_mac) {
+                // 8位设备编号，物理MAC为空 → 补零生成MAC
+                const padded = device_code.toUpperCase() + '0000';
+                resolvedBoardMac = padded.replace(/(.{2})(?=.)/g, '$1:').toUpperCase();
+            } else if (board_mac && !device_code) {
+                // 物理MAC有值但设备编号为空 → 从物理MAC生成设备编号
+                const macHex = board_mac.replace(/[:-]/g, '').toUpperCase();
+                device_code = macHex;
+            }
+
+            if (!resolvedBoardMac && !device_code) {
+                showFieldError('adBoardMac', '请输入物理MAC地址或设备编号（8位/12位）');
+            }
+
+            if (isCustomNumber && !isHex12 && !isAlnum8) {
                 // Custom number mode: wireless_mac and ip_address are auto "未知", skip validation
                 // fault_reason is required
                 if (!fault_reason) { showFieldError('adFaultReason', '自定义编号模式下故障原因为必填'); }
@@ -8566,7 +8688,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             if (hasError) return;
 
             const payload = {
-                board_mac, wireless_mac, ip_address, status, device_type, device_code,
+                board_mac: resolvedBoardMac || board_mac, wireless_mac, ip_address, status, device_type, device_code,
                 fault_reason: fault_reason || null,
                 notes: notes || null,
                 test_date: test_date ? beijingISO(new Date(test_date)) : null,
@@ -8634,7 +8756,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                     progressFill.style.width = pct + '%';
 
                     // Map Excel headers to field names
-                    const board_mac = row['物理MAC'] || row['物理MAC'] || row['board_mac'] || '';
+                    const board_mac_raw = row['物理MAC'] || row['物理MAC'] || row['board_mac'] || '';
                     const wireless_mac = row['无线MAC'] || row['wireless_mac'] || '';
                     const ip_address = row['IP地址'] || row['ip_address'] || '';
                     const device_code_raw = (row['设备编号'] || row['device_code'] || '').toString().trim();
@@ -8648,12 +8770,32 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                     // 设备类型：支持数字或中文
                     const deviceTypeMap = {'1':'1','2':'2','3':'3','4':'4','小周天':'1','大周天':'2','周天':'3','智瞳':'4'};
                     const device_type = deviceTypeMap[device_type_raw] || '';
-                    // 设备编号：8位字母数字则使用，否则留空自动生成
-                    const device_code = (device_code_raw && device_code_raw.length === 8 && /^[A-Za-z0-9]{8}$/.test(device_code_raw)) ? device_code_raw.toUpperCase() : '';
 
-                    if (!board_mac || !wireless_mac || !ip_address) {
+                    // 设备编号和物理MAC互相转换逻辑
+                    let device_code = '';
+                    let board_mac = board_mac_raw.toUpperCase();
+                    const isHex12 = device_code_raw.length === 12 && /^[0-9A-Fa-f]{12}$/.test(device_code_raw);
+                    const isAlnum8 = device_code_raw.length === 8 && /^[A-Za-z0-9]{8}$/.test(device_code_raw);
+
+                    if (isHex12) {
+                        // 12位十六进制设备编号 → 转换为MAC地址作为物理MAC
+                        device_code = device_code_raw.toUpperCase();
+                        board_mac = device_code_raw.replace(/(.{2})(?=.)/g, '$1:').toUpperCase();
+                    } else if (isAlnum8) {
+                        // 8位设备编号 → 以设备编号为主，物理MAC由设备编号补零生成
+                        device_code = device_code_raw.toUpperCase();
+                        const padded = device_code + '0000';
+                        board_mac = padded.replace(/(.{2})(?=.)/g, '$1:').toUpperCase();
+                    } else if (board_mac_raw && !device_code_raw) {
+                        // 物理MAC有值但设备编号为空 → 从物理MAC生成设备编号
+                        const macHex = board_mac_raw.replace(/[:-]/g, '').toUpperCase();
+                        device_code = macHex;
+                        board_mac = macHex.replace(/(.{2})(?=.)/g, '$1:').toUpperCase();
+                    }
+
+                    if (!wireless_mac || !ip_address) {
                         failCount++;
-                        errors.push(`行缺少必填字段: MAC=${board_mac}`);
+                        errors.push(`行缺少必填字段: 设备编号=${device_code || board_mac}`);
                         continue;
                     }
 
@@ -8847,7 +8989,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             tbody.innerHTML = '';
 
             // Build dynamic header
-            let headerHtml = '<th class="col-check"><input type="checkbox" id="selectAllDevices" class="device-checkbox"></th><th>ID</th><th>设备编号</th><th>设备类型</th><th style="display:none;">物理MAC</th><th>无线MAC</th><th>IP地址</th><th>状态</th><th>故障原因</th><th>处置</th><th>测试时间</th><th>操作员</th>';
+            let headerHtml = '<th class="col-check"><input type="checkbox" id="selectAllDevices" class="device-checkbox"></th><th>ID</th><th>序号</th><th>设备编号</th><th>设备类型</th><th style="display:none;">物理MAC</th><th>无线MAC</th><th>IP地址</th><th>状态</th><th>故障原因</th><th>处置</th><th>测试时间</th><th>操作员</th>';
             const metricHeaders = [];
             _metricStandards.forEach(std => {
                 (std.metrics || []).forEach(m => {
@@ -8872,7 +9014,7 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
             }, 0);
 
             if (devices.length === 0) {
-                const colCount = 12 + metricHeaders.length;
+                const colCount = 13 + metricHeaders.length;
                 tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-table"><i class="fas fa-search"></i><p>本批次暂无设备记录</p></td></tr>`;
                 return;
             }
@@ -8911,6 +9053,10 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                 tr.innerHTML = `
                     <td class="col-check"><input type="checkbox" class="device-checkbox" data-id="${device.id}"></td>
                     <td>${device.id}</td>
+                    <td class="sort-order-cell" data-id="${device.id}" data-value="${device.sort_order || ''}" title="点击编辑序号">
+                        <span class="sort-order-display">${device.sort_order || '--'}</span>
+                        <input type="number" class="sort-order-input" value="${device.sort_order || ''}" min="1" style="display:none;width:60px;padding:2px 4px;font-size:12px;">
+                    </td>
                     <td><code>${device.device_code || '--'}</code></td>
                     <td>${deviceTypeText}</td>
                     <td style="display:none;"><code>${device.board_mac}</code></td>
@@ -8942,6 +9088,31 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                 };
             });
             updateBatchToolbar();
+
+            // 序号内联编辑
+            document.querySelectorAll('#batchDevicesTable .sort-order-cell').forEach(cell => {
+                cell.addEventListener('click', function(e) {
+                    if (e.target.classList.contains('sort-order-input')) return;
+                    const display = this.querySelector('.sort-order-display');
+                    const input = this.querySelector('.sort-order-input');
+                    display.style.display = 'none';
+                    input.style.display = 'inline-block';
+                    input.focus();
+                    input.select();
+                });
+                const input = cell.querySelector('.sort-order-input');
+                input.addEventListener('blur', function() {
+                    saveSortOrder(cell, this);
+                });
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') { this.blur(); }
+                    if (e.key === 'Escape') {
+                        this.value = cell.dataset.value;
+                        this.blur();
+                    }
+                });
+            });
+
             // Auto-refresh metrics overview after any device list change
             if (window._allDeviceResults && window._allDeviceResults.length > 0) {
                 updateRatingAndMetrics();
