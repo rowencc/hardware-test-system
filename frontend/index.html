@@ -4518,7 +4518,7 @@
             document.getElementById('downloadTemplate').addEventListener('click', downloadTemplate);
             
             // 设备列表搜索
-            document.getElementById('searchInput').addEventListener('input', debounce(loadDevices, 300));
+            document.getElementById('searchInput').addEventListener('input', debounce(() => loadDevices(), 300));
             // 清空按钮
             const searchInputEl = document.getElementById('searchInput');
             const searchInputClearEl = document.getElementById('searchInputClear');
@@ -4531,10 +4531,10 @@
                 searchInputEl.focus();
                 loadDevices();
             });
-            document.getElementById('statusFilter').addEventListener('change', loadDevices);
-            document.getElementById('dispositionFilter').addEventListener('change', loadDevices);
-            document.getElementById('flowFilter').addEventListener('change', loadDevices);
-            document.getElementById('batchFilter').addEventListener('change', loadDevices);
+            document.getElementById('statusFilter').addEventListener('change', () => loadDevices());
+            document.getElementById('dispositionFilter').addEventListener('change', () => loadDevices());
+            document.getElementById('flowFilter').addEventListener('change', () => loadDevices());
+            document.getElementById('batchFilter').addEventListener('change', () => loadDevices());
 
             // 加载批次列表用于筛选下拉框
             async function loadBatchFilterOptions() {
