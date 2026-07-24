@@ -564,12 +564,13 @@ def _build_mac_like_conditions(field, keyword):
         no_sep = re.sub(r'[:\-]', '', keyword)
         if no_sep != keyword:
             conditions.append(field.like(f"%{no_sep}%"))
-        # 4. 生成带灵活分隔符的模式（每对hex字符后可选任意分隔符）
-        pairs = re.findall(r'[0-9A-Fa-f]{2}', keyword)
-        if len(pairs) >= 2:
-            sep_pattern = ''.join(p + '__' for p in pairs[:-1]) + pairs[-1]
-            if sep_pattern != keyword:
-                conditions.append(field.like(f"%{sep_pattern}%"))
+        # 4. 生成冒号分隔版本（匹配DB中带冒号格式）
+        # 从无分隔符的hex对重建冒号分隔格式，用于搜索无冒号输入匹配有冒号存储
+        hex_pairs = re.findall(r'[0-9A-Fa-f]{2}', no_sep)
+        if len(hex_pairs) >= 2 and no_sep == keyword:
+            colonized = ':'.join(hex_pairs)
+            if colonized.upper() != keyword.upper():
+                conditions.append(field.like(f"%{colonized}%"))
     return conditions
 
 
