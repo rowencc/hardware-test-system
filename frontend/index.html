@@ -1748,11 +1748,15 @@
             #faultsTable td:nth-child(6),
             #faultsTable th:nth-child(11),
             #faultsTable td:nth-child(11) { display: none !important; }
-            /* 故障列表 header: 紧凑排列 */
-            .card-actions { flex-wrap: wrap; gap: 4px; }
-            .card-actions .search-box { min-width: 0; flex: 1 1 100%; }
-            .card-actions .form-control-sm { font-size: 11px; padding: 4px 6px; }
-            .card-actions .btn-sm { font-size: 10px; padding: 4px 6px; }
+            /* 故障列表 header: 单行排列 */
+            .card-actions {
+                flex-wrap: nowrap !important; gap: 4px; flex: 1 1 0; min-width: 0;
+                align-items: center;
+            }
+            .card-actions .search-box { flex: 1 1 0; min-width: 0; }
+            .card-actions .search-box input { font-size: 11px; padding: 4px 24px 4px 6px; }
+            .card-actions .form-control-sm { font-size: 11px; padding: 4px 6px; max-width: 90px; }
+            .card-actions .btn-sm { font-size: 10px; padding: 4px 6px; flex-shrink: 0; }
         }
 
         /* Mobile: <768px */
