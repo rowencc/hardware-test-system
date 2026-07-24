@@ -2812,6 +2812,13 @@
             border-color: var(--color-success);
             background: rgba(16,185,129,.08);
         }
+        .copy-cell-btn {
+            border: none; background: none; color: var(--color-text-3); cursor: pointer;
+            padding: 1px 4px; font-size: 11px; border-radius: 3px; transition: all .15s;
+            vertical-align: middle; margin-left: 2px;
+        }
+        .copy-cell-btn:hover { color: var(--color-primary); background: rgba(99,102,241,.08); }
+        .copy-cell-btn.copied { color: var(--color-success); }
 
         /* Responsive: stack columns on narrow screens */
         @media (max-width: 768px) {
@@ -5287,12 +5294,12 @@
                         <span class="sort-order-display">${device.sort_order || '--'}</span>
                         <input type="number" class="sort-order-input" value="${device.sort_order || ''}" min="1" style="display:none;width:60px;padding:2px 4px;font-size:12px;">
                     </td>
-                    <td><code>${device.device_code || '--'}</code></td>
+                    <td><code>${device.device_code || '--'}</code> ${device.device_code ? `<button class="btn btn-sm copy-cell-btn" onclick="copyToClipboard('${device.device_code}', this)" title="复制设备编号"><i class="fas fa-copy"></i></button>` : ''}</td>
                     <td>${deviceTypeText}</td>
                     <td><span class="flow-badge ${flowClass}">${flowIcon} ${flowStatus}${device.flow_overdue ? ' ⚠' : ''}</span>${flowTooltip}</td>
                     <td style="display:none;"><code>${device.board_mac}</code></td>
-                    <td><code>${device.wireless_mac}</code></td>
-                    <td><code>${device.ip_address}</code></td>
+                    <td><code>${device.wireless_mac}</code> ${device.wireless_mac ? `<button class="btn btn-sm copy-cell-btn" onclick="copyToClipboard('${device.wireless_mac}', this)" title="复制无线MAC"><i class="fas fa-copy"></i></button>` : ''}</td>
+                    <td><code>${device.ip_address}</code> ${device.ip_address ? `<button class="btn btn-sm copy-cell-btn" onclick="copyToClipboard('${device.ip_address}', this)" title="复制IP地址"><i class="fas fa-copy"></i></button>` : ''}</td>
                     <td>${device.batch_no || '--'}</td>
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     <td>${device.fault_reason || '--'}</td>
@@ -5767,10 +5774,10 @@
                 tr.innerHTML = `
                     <td class="col-check"><input type="checkbox" class="row-checkbox" data-id="${d.id}" data-table="fault-table"></td>
                     <td>${d.id}</td>
-                    <td><code>${d.device_code || '--'}</code></td>
+                    <td><code>${d.device_code || '--'}</code> ${d.device_code ? `<button class="btn btn-sm copy-cell-btn" onclick="copyToClipboard('${d.device_code}', this)" title="复制设备编号"><i class="fas fa-copy"></i></button>` : ''}</td>
                     <td style="display:none;"><code>${d.board_mac}</code></td>
-                    <td><code>${d.wireless_mac}</code></td>
-                    <td><code>${d.ip_address}</code></td>
+                    <td><code>${d.wireless_mac}</code> ${d.wireless_mac ? `<button class="btn btn-sm copy-cell-btn" onclick="copyToClipboard('${d.wireless_mac}', this)" title="复制无线MAC"><i class="fas fa-copy"></i></button>` : ''}</td>
+                    <td><code>${d.ip_address}</code> ${d.ip_address ? `<button class="btn btn-sm copy-cell-btn" onclick="copyToClipboard('${d.ip_address}', this)" title="复制IP地址"><i class="fas fa-copy"></i></button>` : ''}</td>
                     <td>${d.batch_no || '--'}</td>
                     <td><span class="status-badge status-fault"><span class="dot dot-fault"></span>故障</span></td>
                     <td><span title="${(d.fault_reason || '').replace(/"/g, '&quot;')}" style="max-width:180px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.fault_reason || '--'}</span></td>
@@ -9057,11 +9064,11 @@ document.getElementById('saveBatchCreate').addEventListener('click', async funct
                         <span class="sort-order-display">${device.sort_order || '--'}</span>
                         <input type="number" class="sort-order-input" value="${device.sort_order || ''}" min="1" style="display:none;width:60px;padding:2px 4px;font-size:12px;">
                     </td>
-                    <td><code>${device.device_code || '--'}</code></td>
+                    <td><code>${device.device_code || '--'}</code> ${device.device_code ? `<button class="btn btn-sm copy-cell-btn" onclick="copyToClipboard('${device.device_code}', this)" title="复制设备编号"><i class="fas fa-copy"></i></button>` : ''}</td>
                     <td>${deviceTypeText}</td>
                     <td style="display:none;"><code>${device.board_mac}</code></td>
-                    <td><code>${device.wireless_mac}</code></td>
-                    <td><code>${device.ip_address}</code></td>
+                    <td><code>${device.wireless_mac}</code> ${device.wireless_mac ? `<button class="btn btn-sm copy-cell-btn" onclick="copyToClipboard('${device.wireless_mac}', this)" title="复制无线MAC"><i class="fas fa-copy"></i></button>` : ''}</td>
+                    <td><code>${device.ip_address}</code> ${device.ip_address ? `<button class="btn btn-sm copy-cell-btn" onclick="copyToClipboard('${device.ip_address}', this)" title="复制IP地址"><i class="fas fa-copy"></i></button>` : ''}</td>
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     <td>${device.fault_reason || '--'}</td>
                     <td>${dispositionText ? `<span class="status-badge ${dispositionClass}">${dispositionText}</span>` : '--'}</td>
