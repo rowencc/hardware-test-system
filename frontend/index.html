@@ -1726,11 +1726,15 @@
 
         /* Table column hide on mobile */
         @media (max-width: 767px) {
-            /* 设备列表: 隐藏 ID、序号、批次、故障原因、操作员 */
+            /* 设备列表: 隐藏 ID、序号、设备类型、流转、批次、故障原因、操作员 */
             #devicesTable th:nth-child(2),
             #devicesTable td:nth-child(2),
             #devicesTable th:nth-child(3),
             #devicesTable td:nth-child(3),
+            #devicesTable th:nth-child(5),
+            #devicesTable td:nth-child(5),
+            #devicesTable th:nth-child(6),
+            #devicesTable td:nth-child(6),
             #devicesTable th:nth-child(10),
             #devicesTable td:nth-child(10),
             #devicesTable th:nth-child(12),
@@ -1770,19 +1774,35 @@
             .header-actions { gap: 3px !important; flex-shrink: 0; }
             .header-actions .btn { padding: 3px 6px !important; font-size: 10px !important; white-space: nowrap; }
 
-            /* Header controls: search always visible, filters collapsible */
-            .header-controls { flex-direction: column; gap: 4px; padding: 4px 8px; }
-            .header-controls .search-box { width: 100%; }
+            /* Card header: single row — title | search + filter */
+            .card-header {
+                flex-wrap: nowrap !important;
+                gap: 4px !important;
+                padding: 5px 8px !important;
+                align-items: center !important;
+            }
+            .card-header .card-title { font-size: 12px !important; flex-shrink: 0; white-space: nowrap; }
+            /* header-controls: horizontal row on mobile */
+            .header-controls {
+                flex-direction: row !important;
+                gap: 4px !important;
+                padding: 0 !important;
+                flex: 1 1 0;
+                min-width: 0;
+                align-items: center;
+            }
+            .header-controls .search-box { flex: 1 1 0; min-width: 0; }
+            .header-controls .search-box input { font-size: 11px; padding: 4px 24px 4px 6px; }
+            .mobile-filter-toggle { display: flex; flex-shrink: 0; padding: 4px 8px; font-size: 10px; }
             .header-controls .filters {
                 display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%;
             }
             .header-controls .filters select { width: 100%; font-size: 11px; padding: 5px 6px; }
-            .mobile-filter-toggle { display: flex; }
 
             /* Content area: tighter */
             .content-section { padding: 6px 8px !important; }
 
-            /* Stats grid: 2 columns, ultra compact — single row per stat */
+            /* Stats grid: 2 columns, ultra compact */
             .stats-grid { grid-template-columns: 1fr 1fr !important; gap: 4px !important; }
             .stat-card {
                 padding: 5px 6px !important;
@@ -1803,21 +1823,21 @@
 
             /* Card: tighter */
             .card { margin-bottom: 4px; }
-            .card-header { padding: 5px 8px !important; flex-wrap: wrap; gap: 3px; }
-            .card-header .card-title { font-size: 12px !important; }
             .card-body { padding: 5px 8px !important; }
 
-            /* Tables: horizontal scroll, hide次要列 */
+            /* Tables: compact, fewer visible columns */
             .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -8px; padding: 0 8px; }
-            .data-table { min-width: 480px; font-size: 11px; }
+            .data-table { min-width: 380px; font-size: 11px; }
             .data-table th, .data-table td { padding: 4px 5px; white-space: nowrap; }
             .data-table .actions-cell { white-space: nowrap; }
-            .data-table .actions-cell .btn { padding: 3px 5px; font-size: 10px; }
+            .data-table .actions-cell .btn { padding: 3px 4px; font-size: 9px; }
             .data-table code { font-size: 10px; }
 
-            /* Batch toolbar: compact */
-            .batch-toolbar { flex-wrap: wrap; gap: 3px; padding: 4px 8px; }
-            .batch-toolbar .btn { font-size: 10px; padding: 4px 6px; }
+            /* Batch toolbar: icon-only on mobile */
+            .batch-toolbar { flex-wrap: nowrap; gap: 3px; padding: 3px 8px; align-items: center; }
+            .batch-toolbar .btn { font-size: 10px; padding: 3px 6px; }
+            .batch-toolbar .btn i + span,
+            .batch-toolbar .batch-count { display: none; }
 
             /* Form rows: single column */
             .form-row { grid-template-columns: 1fr !important; gap: 6px !important; }
