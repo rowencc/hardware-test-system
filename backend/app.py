@@ -565,12 +565,15 @@ def _build_mac_like_conditions(field, keyword):
         if no_sep != keyword:
             conditions.append(field.like(f"%{no_sep}%"))
         # 4. 生成冒号分隔版本（匹配DB中带冒号格式）
-        # 关键：无冒号输入(如 d658)必须生成冒号版本(d6:58)才能匹配 DB 中的 D6:58:...
+        # 无冒号输入(如 d658→d6:58, d65→D6:5) 必须生成冒号版本才能匹配 DB 中带冒号的存储
         hex_pairs = re.findall(r'[0-9A-Fa-f]{2}', no_sep)
-        if len(hex_pairs) >= 2:
-            colonized = ':'.join(hex_pairs)
-            if colonized.upper() != keyword.upper():
-                conditions.append(field.like(f"%{colonized}%"))
+        remaining = re.sub(r'[0-9A-Fa-f]{2}', '', no_sep)
+        if hex_pairs:
+            # 有剩余hex字符(d65→"5")或多个对(d658)，需要冒号版本匹配跨边界场景
+            if remaining or len(hex_pairs) >= 2:
+                colonized = ':'.join(hex_pairs) + (':' + remaining if remaining else '')
+                if colonized.upper() != keyword.upper():
+                    conditions.append(field.like(f"%{colonized}%"))
     return conditions
 
 
