@@ -1712,6 +1712,43 @@
             .header-controls .filters select { width: 100%; }
         }
 
+        /* Mobile filter toggle button */
+        .mobile-filter-toggle {
+            display: none; align-items: center; gap: 4px; padding: 5px 10px;
+            font-size: 11px; border: 1px solid var(--color-border); border-radius: 6px;
+            background: var(--color-bg-2); color: var(--color-text-2); cursor: pointer;
+        }
+        .mobile-filter-toggle i { font-size: 10px; }
+        .mobile-filter-toggle.active { color: var(--color-primary); border-color: var(--color-primary); }
+        .header-controls .filters.collapsed { display: none !important; }
+
+        /* Table column hide on mobile */
+        @media (max-width: 767px) {
+            /* 设备列表: 隐藏 ID、序号、批次、故障原因、操作员 */
+            #devicesTable th:nth-child(2),
+            #devicesTable td:nth-child(2),
+            #devicesTable th:nth-child(3),
+            #devicesTable td:nth-child(3),
+            #devicesTable th:nth-child(10),
+            #devicesTable td:nth-child(10),
+            #devicesTable th:nth-child(12),
+            #devicesTable td:nth-child(12),
+            #devicesTable th:nth-child(15),
+            #devicesTable td:nth-child(15) { display: none !important; }
+            /* 故障列表: 隐藏 ID、批次、操作员 */
+            #faultsTable th:nth-child(2),
+            #faultsTable td:nth-child(2),
+            #faultsTable th:nth-child(6),
+            #faultsTable td:nth-child(6),
+            #faultsTable th:nth-child(11),
+            #faultsTable td:nth-child(11) { display: none !important; }
+            /* 故障列表 header: 紧凑排列 */
+            .card-actions { flex-wrap: wrap; gap: 4px; }
+            .card-actions .search-box { min-width: 0; flex: 1 1 100%; }
+            .card-actions .form-control-sm { font-size: 11px; padding: 4px 6px; }
+            .card-actions .btn-sm { font-size: 10px; padding: 4px 6px; }
+        }
+
         /* Mobile: <768px */
         @media (max-width: 767px) {
             body { font-size: 13px; }
@@ -1719,64 +1756,69 @@
             /* Header: compact layout */
             .app-header {
                 padding: 4px 8px !important;
-                height: 44px !important;
+                height: 40px !important;
                 flex-wrap: nowrap !important;
             }
             .logo { gap: 6px !important; }
-            .logo-icon { width: 26px !important; height: 26px !important; font-size: 12px !important; }
-            .logo-text h1 { font-size: 13px !important; }
+            .logo-icon { width: 24px !important; height: 24px !important; font-size: 11px !important; }
+            .logo-text h1 { font-size: 12px !important; }
             .logo-text .subtitle { display: none !important; }
-            .header-actions { gap: 4px !important; flex-shrink: 0; }
-            .header-actions .btn { padding: 4px 8px !important; font-size: 10px !important; white-space: nowrap; }
-            .header-actions .btn i { margin-right: 2px; }
+            .header-actions { gap: 3px !important; flex-shrink: 0; }
+            .header-actions .btn { padding: 3px 6px !important; font-size: 10px !important; white-space: nowrap; }
+            .header-actions .btn i { margin-right: 1px; }
             .user-info { font-size: 10px !important; }
             .operator-name { font-size: 10px !important; }
-            .header-controls { flex-direction: column; gap: 6px; padding: 6px 10px; }
+
+            /* Header controls: search always visible, filters collapsible */
+            .header-controls { flex-direction: column; gap: 4px; padding: 4px 8px; }
             .header-controls .search-box { width: 100%; }
-            .header-controls .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
-            .header-controls .filters select { width: 100%; font-size: 11px; padding: 6px 8px; }
+            .header-controls .filters {
+                display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%;
+            }
+            .header-controls .filters select { width: 100%; font-size: 11px; padding: 5px 6px; }
+            .mobile-filter-toggle { display: flex; }
 
-            /* Content area */
-            .content-section { padding: 8px 10px !important; }
+            /* Content area: tighter spacing */
+            .content-section { padding: 6px 8px !important; }
 
-            /* Stats grid: 2 columns, compact */
-            .stats-grid { grid-template-columns: 1fr 1fr !important; gap: 6px !important; }
+            /* Stats grid: 2 columns, ultra compact */
+            .stats-grid { grid-template-columns: 1fr 1fr !important; gap: 4px !important; }
             .stat-card {
-                padding: 8px 10px !important;
+                padding: 6px 8px !important;
                 display: flex !important;
                 align-items: center !important;
-                gap: 8px !important;
+                gap: 6px !important;
             }
-            .stat-card .stat-value { font-size: 20px !important; line-height: 1; }
-            .stat-card .stat-label { font-size: 10px !important; margin-top: 2px; }
-            .stat-icon { width: 32px !important; height: 32px !important; font-size: 14px !important; flex-shrink: 0; }
+            .stat-card .stat-value { font-size: 18px !important; line-height: 1; }
+            .stat-card .stat-label { font-size: 9px !important; margin-top: 1px; }
+            .stat-icon { width: 28px !important; height: 28px !important; font-size: 12px !important; flex-shrink: 0; }
 
             /* KPI grid */
-            .kpi-grid { grid-template-columns: 1fr 1fr !important; gap: 6px !important; }
+            .kpi-grid { grid-template-columns: 1fr 1fr !important; gap: 4px !important; }
 
-            /* Card */
-            .card { margin-bottom: 10px; }
-            .card-header { padding: 10px 12px !important; flex-wrap: wrap; gap: 6px; }
-            .card-header .card-title { font-size: 14px !important; }
-            .card-body { padding: 10px 12px !important; }
+            /* Card: tighter */
+            .card { margin-bottom: 6px; }
+            .card-header { padding: 6px 8px !important; flex-wrap: wrap; gap: 4px; }
+            .card-header .card-title { font-size: 13px !important; }
+            .card-body { padding: 6px 8px !important; }
 
-            /* Tables: horizontal scroll */
-            .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -10px; padding: 0 10px; }
-            .data-table { min-width: 700px; font-size: 11px; }
-            .data-table th, .data-table td { padding: 5px 6px; white-space: nowrap; }
+            /* Tables: horizontal scroll, hide次要列 */
+            .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -8px; padding: 0 8px; }
+            .data-table { min-width: 480px; font-size: 11px; }
+            .data-table th, .data-table td { padding: 4px 5px; white-space: nowrap; }
             .data-table .actions-cell { white-space: nowrap; }
-            .data-table .actions-cell .btn { padding: 4px 6px; font-size: 10px; }
+            .data-table .actions-cell .btn { padding: 3px 5px; font-size: 10px; }
             .data-table code { font-size: 10px; }
 
-            /* Batch toolbar */
-            .batch-toolbar { flex-wrap: wrap; gap: 4px; padding: 6px 10px; }
-            .batch-toolbar .btn { font-size: 11px; padding: 5px 8px; }
+            /* Batch toolbar: compact */
+            .batch-toolbar { flex-wrap: wrap; gap: 3px; padding: 4px 8px; }
+            .batch-toolbar .btn { font-size: 10px; padding: 4px 6px; }
 
             /* Form rows: single column */
-            .form-row { grid-template-columns: 1fr !important; gap: 8px !important; }
-            .form-group { margin-bottom: 8px; }
-            .form-label { font-size: 11px; margin-bottom: 3px; }
-            .form-control { font-size: 13px; padding: 7px 10px; }
+            .form-row { grid-template-columns: 1fr !important; gap: 6px !important; }
+            .form-group { margin-bottom: 6px; }
+            .form-label { font-size: 11px; margin-bottom: 2px; }
+            .form-control { font-size: 13px; padding: 6px 8px; }
 
             /* Modals: full screen on mobile */
             .modal { padding: 0 !important; }
@@ -1786,24 +1828,24 @@
                 border-radius: 0 !important; margin: 0 !important;
                 display: flex; flex-direction: column;
             }
-            .modal-body { flex: 1; overflow-y: auto; padding: 12px 14px !important; }
-            .modal-footer { padding: 10px 14px !important; flex-shrink: 0; display: flex; gap: 8px; }
+            .modal-body { flex: 1; overflow-y: auto; padding: 10px 12px !important; }
+            .modal-footer { padding: 8px 12px !important; flex-shrink: 0; display: flex; gap: 6px; }
             .modal-footer .btn { flex: 1; }
-            .modal-header { padding: 10px 14px !important; flex-shrink: 0; }
-            .modal-header h3 { font-size: 15px; }
+            .modal-header { padding: 8px 12px !important; flex-shrink: 0; }
+            .modal-header h3 { font-size: 14px; }
 
-            /* Pagination */
-            .pagination-bar { flex-wrap: wrap; justify-content: center; gap: 3px; padding: 6px 10px; }
-            .pagination-bar .btn { min-width: 32px; padding: 5px 8px; font-size: 11px; }
+            /* Pagination: compact */
+            .pagination-bar { flex-wrap: wrap; justify-content: center; gap: 2px; padding: 4px 8px; }
+            .pagination-bar .btn { min-width: 28px; padding: 4px 6px; font-size: 10px; }
 
             /* Chart */
             .chart-row { grid-template-columns: 1fr !important; }
-            .chart-container canvas { max-height: 180px; }
+            .chart-container canvas { max-height: 160px; }
 
             /* Buttons: larger touch targets */
-            .btn { min-height: 34px; }
-            .btn-sm { min-height: 30px; font-size: 11px; }
-            .btn-xs { min-height: 26px; font-size: 10px; padding: 3px 6px; }
+            .btn { min-height: 32px; }
+            .btn-sm { min-height: 28px; font-size: 10px; }
+            .btn-xs { min-height: 24px; font-size: 9px; padding: 2px 5px; }
 
             /* Export modal */
             #exportModal .column-item { flex-wrap: wrap; }
@@ -1811,23 +1853,23 @@
             #exportModal .header-input { min-width: 100%; margin-top: 4px; }
 
             /* Pagination controls */
-            .pagination-controls { flex-wrap: wrap; gap: 3px; }
+            .pagination-controls { flex-wrap: wrap; gap: 2px; }
 
             /* Login overlay */
-            .login-container { padding: 12px; }
-            .login-card { padding: 20px 16px; }
+            .login-container { padding: 10px; }
+            .login-card { padding: 16px 14px; }
 
             /* Tab nav */
             .tab-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-            .tab-btn { white-space: nowrap; padding: 8px 12px; font-size: 12px; }
+            .tab-btn { white-space: nowrap; padding: 6px 10px; font-size: 11px; }
 
             /* Batch detail */
             .batch-stat-row { grid-template-columns: 1fr 1fr !important; }
 
             /* Flow page */
-            #flow .card-body { padding: 8px 10px !important; }
-            #flow .stat-card { padding: 6px 8px !important; }
-            #flow .stat-value { font-size: 18px !important; }
+            #flow .card-body { padding: 6px 8px !important; }
+            #flow .stat-card { padding: 4px 6px !important; }
+            #flow .stat-value { font-size: 16px !important; }
             #flow .stat-label { font-size: 9px !important; }
         }
 
@@ -1836,7 +1878,7 @@
             .stats-grid { grid-template-columns: 1fr !important; }
             .kpi-grid { grid-template-columns: 1fr !important; }
             .header-controls .filters { grid-template-columns: 1fr; }
-            .data-table { min-width: 600px; }
+            .data-table { min-width: 400px; }
             .batch-toolbar { flex-direction: column; }
             .batch-toolbar .btn { width: 100%; justify-content: center; }
         }
@@ -3256,10 +3298,13 @@
                         </h2>
                         <div class="header-controls">
                             <div class="search-box">
-                                <input type="text" id="searchInput" class="form-control" 
+                                <input type="text" id="searchInput" class="form-control"
                                        placeholder="搜索 MAC/IP/单号/操作员...">
                                 <button type="button" class="search-clear-btn" id="searchInputClear" title="清空搜索">&times;</button>
                             </div>
+                            <button type="button" class="mobile-filter-toggle" id="mobileFilterToggle" onclick="document.querySelector('#devices .filters').classList.toggle('collapsed'); this.classList.toggle('active');">
+                                <i class="fas fa-filter"></i> 筛选
+                            </button>
                             <div class="filters">
                                 <select id="batchFilter" class="form-control" style="min-width:120px;">
                                     <option value="">所有批次</option>
@@ -4299,6 +4344,25 @@
 
         // DOM 加载完成
         document.addEventListener('DOMContentLoaded', function() {
+            // Mobile filter toggle: auto-collapse on mobile
+            (function() {
+                const mq = window.matchMedia('(max-width: 767px)');
+                const filters = document.querySelector('#devices .filters');
+                const toggle = document.getElementById('mobileFilterToggle');
+                if (!filters || !toggle) return;
+                function applyMobileFilter(e) {
+                    if (e.matches) {
+                        filters.classList.add('collapsed');
+                        toggle.classList.remove('active');
+                    } else {
+                        filters.classList.remove('collapsed');
+                        toggle.classList.remove('active');
+                    }
+                }
+                mq.addEventListener('change', applyMobileFilter);
+                applyMobileFilter(mq);
+            })();
+
             // Theme initialization
             initTheme();
 
