@@ -1900,6 +1900,23 @@
             #flow .stat-card { padding: 4px 6px !important; }
             #flow .stat-value { font-size: 15px !important; }
             #flow .stat-label { font-size: 9px !important; }
+            /* Flow filters: single row */
+            #flow .card-body > div[style*="flex-wrap"] {
+                flex-wrap: nowrap !important; gap: 4px !important;
+            }
+            #flow .card-body > div[style*="flex-wrap"] .form-control { font-size: 11px; padding: 4px 6px; min-width: 0 !important; width: auto !important; flex: 1 1 0 !important; }
+            #flow .card-body > div[style*="flex-wrap"] select.form-control { flex: 0 0 auto !important; max-width: 80px; }
+            #flow .card-body > div[style*="flex-wrap"] .btn { font-size: 10px; padding: 4px 6px; flex-shrink: 0; white-space: nowrap; }
+
+            /* Returns page: single row header */
+            #returns .card-header { flex-wrap: nowrap !important; gap: 4px !important; }
+            #returns .card-header > div[style*="flex-wrap"] {
+                flex-wrap: nowrap !important; gap: 4px !important; flex: 1 1 0; min-width: 0;
+            }
+            #returns .card-header select { font-size: 11px; padding: 4px 4px; max-width: 70px; flex-shrink: 0; }
+            #returns .card-header .search-box { min-width: 0 !important; flex: 1 1 0 !important; }
+            #returns .card-header .search-box input { font-size: 11px; padding: 4px 24px 4px 6px; }
+            #returns .btn-return-new { font-size: 10px; padding: 4px 8px; white-space: nowrap; flex-shrink: 0; }
 
             /* Sidebar: add theme toggle at bottom */
             .sidebar .nav-section:last-child::after {
