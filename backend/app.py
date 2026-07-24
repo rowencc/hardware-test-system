@@ -530,6 +530,7 @@ IP_PATTERN = re.compile(
 )
 
 
+
 def normalize_mac(raw):
     """将紧凑十六进制MAC（如 'AAD37A769C3F'）规范化为冒号分隔格式。
     已是冒号/横杠分隔的格式原样返回。"""
@@ -541,6 +542,79 @@ def normalize_mac(raw):
     if len(s) == 12 and all(c in '0123456789ABCDEF' for c in s):
         return ':'.join(s[i:i+2] for i in range(0, 12, 2))
     return s
+
+
+def _build_mac_like_conditions(field, keyword):
+    """为单个MAC字段生成灵活匹配LIKE条件列表，支持带/不带分隔符的搜索。
+    例如搜索 'AABBCC' 同时匹配 'AA:BB:CC:DD:EE:FF' 和 'AABBCCDDEEFF'。
+    搜索 'AA:BB:CC' 也能匹配数据库中无分隔符的 'AABBCC...'。"""
+    conditions = []
+    # 1. 原始关键词直接LIKE（兜底所有字段）
+    conditions.append(field.like(f"%{keyword}%"))
+    # 2. 如果是12位完整MAC，生成冒号分隔和无分隔符两种精确格式
+    stripped = re.sub(r'[:\-\s]', '', keyword).upper()
+    if len(stripped) == 12 and all(c in '0123456789ABCDEF' for c in stripped):
+        colonized = ':'.join(stripped[i:i+2] for i in range(0, 12, 2))
+        if colonized.upper() != keyword.upper():
+            conditions.append(field.like(f"%{colonized}%"))
+        if stripped != keyword:
+            conditions.append(field.like(f"%{stripped}%"))
+    else:
+        # 3. 非完整MAC：生成无分隔符版本（匹配DB中紧凑格式）
+        no_sep = re.sub(r'[:\-]', '', keyword)
+        if no_sep != keyword:
+            conditions.append(field.like(f"%{no_sep}%"))
+        # 4. 生成带灵活分隔符的模式（每对hex字符后可选任意分隔符）
+        pairs = re.findall(r'[0-9A-Fa-f]{2}', keyword)
+        if len(pairs) >= 2:
+            sep_pattern = ''.join(p + '__' for p in pairs[:-1]) + pairs[-1]
+            if sep_pattern != keyword:
+                conditions.append(field.like(f"%{sep_pattern}%"))
+    return conditions
+
+
+def _build_mac_search_conditions(search_term):
+    """构建MAC地址灵活搜索条件：支持带/不带冒号的MAC匹配。
+    如果搜索词是12位十六进制（如'AAD37A769C3F'），同时匹配冒号分隔格式和紧凑格式。
+    否则走灵活分隔符搜索（MAC字段同时匹配带/不带分隔符的格式）。"""
+    stripped = search_term.replace(":", "").replace("-", "").replace(" ", "")
+    if len(stripped) == 12 and all(c in '0123456789ABCDEFabcdef' for c in stripped):
+        normalized = ':'.join(stripped[i:i+2] for i in range(0, 12, 2)).upper()
+        raw = stripped.upper()
+        # 构建灵活的MAC匹配条件：带/不带分隔符均能匹配
+        board_conds = _build_mac_like_conditions(DeviceTest.board_mac, search_term)
+        wireless_conds = _build_mac_like_conditions(DeviceTest.wireless_mac, search_term)
+        return or_(
+            # 精确匹配（带/不带分隔符）
+            DeviceTest.board_mac == normalized,
+            DeviceTest.board_mac == raw,
+            DeviceTest.wireless_mac == normalized,
+            DeviceTest.wireless_mac == raw,
+            # 灵活LIKE匹配（兜底部分匹配、不同分隔符等场景）
+            *board_conds,
+            *wireless_conds,
+            # 设备编号/其他字段
+            DeviceTest.device_code.like(f"%{search_term}%"),
+            DeviceTest.device_code.like(f"%{raw}%"),
+            DeviceTest.ip_address.like(f"%{search_term}%"),
+            DeviceTest.operator.like(f"%{search_term}%"),
+            DeviceTest.notes.like(f"%{search_term}%"),
+            DeviceTest.return_tracking.like(f"%{search_term}%"),
+        )
+    # 非完整MAC：MAC字段用灵活分隔符匹配，其他字段直接LIKE
+    mac_conds = (
+        _build_mac_like_conditions(DeviceTest.board_mac, search_term)
+        + _build_mac_like_conditions(DeviceTest.wireless_mac, search_term)
+    )
+    like = f"%{search_term}%"
+    return or_(
+        *mac_conds,
+        DeviceTest.device_code.like(like),
+        DeviceTest.ip_address.like(like),
+        DeviceTest.operator.like(like),
+        DeviceTest.notes.like(like),
+        DeviceTest.return_tracking.like(like),
+    )
 
 
 def _resolve_device_code_and_mac(data):
@@ -1253,16 +1327,7 @@ def list_batch_devices(batch_id):
         query = db.query(DeviceTest).options(joinedload(DeviceTest.batch)).filter(DeviceTest.batch_id == batch_id)
 
         if search:
-            like = f"%{search}%"
-            query = query.filter(
-                or_(
-                    DeviceTest.board_mac.like(like),
-                    DeviceTest.wireless_mac.like(like),
-                    DeviceTest.ip_address.like(like),
-                    DeviceTest.operator.like(like),
-                    DeviceTest.device_code.like(like),
-                )
-            )
+            query = query.filter(_build_mac_search_conditions(search))
         if status_filter:
             query = query.filter(DeviceTest.status == status_filter)
 
@@ -1946,18 +2011,7 @@ def list_devices():
         query = db.query(DeviceTest).options(joinedload(DeviceTest.batch))
 
         if search:
-            like = f"%{search}%"
-            query = query.filter(
-                or_(
-                    DeviceTest.board_mac.like(like),
-                    DeviceTest.wireless_mac.like(like),
-                    DeviceTest.ip_address.like(like),
-                    DeviceTest.return_tracking.like(like),
-                    DeviceTest.operator.like(like),
-                    DeviceTest.notes.like(like),
-                    DeviceTest.device_code.like(like),
-                )
-            )
+            query = query.filter(_build_mac_search_conditions(search))
         if status_filter:
             query = query.filter(DeviceTest.status == status_filter)
         if disposition_filter:
@@ -2757,17 +2811,7 @@ def _get_filtered_devices(db):
     date_to = request.args.get("date_to", "").strip()
 
     if search:
-        like = f"%{search}%"
-        query = query.filter(
-            or_(
-                DeviceTest.board_mac.like(like),
-                DeviceTest.wireless_mac.like(like),
-                DeviceTest.ip_address.like(like),
-                DeviceTest.return_tracking.like(like),
-                DeviceTest.operator.like(like),
-                DeviceTest.device_code.like(like),
-            )
-        )
+        query = query.filter(_build_mac_search_conditions(search))
     if status_filter:
         query = query.filter(DeviceTest.status == status_filter)
     if disposition_filter:
@@ -3334,15 +3378,7 @@ def export_device_tests_batch():
                 disposition = "待返厂"
             query = query.filter(DeviceTest.fault_disposition == disposition)
         if filters.get("keyword"):
-            like = f"%{filters['keyword']}%"
-            query = query.filter(or_(
-                DeviceTest.board_mac.like(like),
-                DeviceTest.wireless_mac.like(like),
-                DeviceTest.ip_address.like(like),
-                DeviceTest.operator.like(like),
-                DeviceTest.device_code.like(like),
-                DeviceTest.return_tracking.like(like),
-            ))
+            query = query.filter(_build_mac_search_conditions(filters['keyword']))
         if filters.get("date_from"):
             query = query.filter(DeviceTest.test_date >= filters["date_from"])
         if filters.get("date_to"):
@@ -3386,15 +3422,13 @@ def export_faults_batch():
     try:
         query = db.query(DeviceTest).filter(DeviceTest.status == "fault")
         if filters.get("keyword"):
-            like = f"%{filters['keyword']}%"
-            query = query.filter(or_(
-                DeviceTest.board_mac.like(like),
-                DeviceTest.wireless_mac.like(like),
-                DeviceTest.ip_address.like(like),
-                DeviceTest.fault_reason.like(like),
-                DeviceTest.return_tracking.like(like),
-                DeviceTest.operator.like(like),
-            ))
+            kw = filters['keyword']
+            query = query.filter(
+                or_(
+                    _build_mac_search_conditions(kw),
+                    DeviceTest.fault_reason.like(f"%{kw}%"),
+                )
+            )
         if filters.get("disposition"):
             disposition = filters["disposition"]
             if disposition == "returned":
@@ -3628,12 +3662,8 @@ def list_faults():
         if search:
             query = query.filter(
                 or_(
-                    DeviceTest.board_mac.contains(search),
-                    DeviceTest.wireless_mac.contains(search),
-                    DeviceTest.ip_address.contains(search),
-                    DeviceTest.fault_reason.contains(search),
-                    DeviceTest.return_tracking.contains(search),
-                    DeviceTest.operator.contains(search),
+                    _build_mac_search_conditions(search),
+                    DeviceTest.fault_reason.like(f"%{search}%"),
                 )
             )
 
